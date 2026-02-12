@@ -2,10 +2,11 @@
 import time
 import os
 import socket
+import struct
 import signal
 import sys
 import configparser
-from daemon import runner
+# from daemon import runner
 
 SOCKET_PATH = "/run/cbac.sock"
 
@@ -32,10 +33,21 @@ class CBAC():
         pass
 
     def run(self):
+        data = None
 
         while True:
+            print("Inside run loop\n")
+            conn, _ = self.server.accept()
+            data = conn.recv(68)
+            print("Data received\n")
+            code, message = struct.unpack('<i64s', data)
+            print(f"{code}")
+
             time.sleep(5)
 
 cbac = CBAC()
+
+cbac.run()
+
 # daemon_runner = runner.DaemonRunner(cbac)
 # daemon_runner.do_action()

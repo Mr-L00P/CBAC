@@ -1,12 +1,21 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <unistd.h>
+#include <pwd.h>
+#include <grp.h>
 #include <string.h>
+#include <sys/types.h>
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <security/pam_appl.h>
 #include <security/pam_modules.h>
 
-#define  SOCKET_PATH "/run/cbac.sock"
+#define SOCKET_PATH "/run/cbac.sock"
+
+typedef struct cbac_message {
+    int code;
+    char message[64];
+};
 
 PAM_EXTERN int
 pam_sm_authenticate(pam_handle_t *pamh, int flags,
@@ -32,30 +41,30 @@ pam_sm_acct_mgmt(pam_handle_t *pamh, int flags,
     // Dejar pasar a un grupo en específico
 
     const char *user = NULL;
-    int ngrupos = 0;
+    int ngroups = 0;
     pam_get_item(pamh, PAM_USER, (const void **)&user);
 
     const char *group_excep = "tecnicos";
 
-    struct group *gr getgrnam(group_excep);
+    struct group *gr = getgrnam(group_excep);
     struct passwd *pw = getpwnam(user);
     if (gr == NULL || pw == NULL) {
-        pam_error(pamh, "Error de usuario\n");
-        return PAM_SYSTEM_ERR
+        // pam_error(pamh, "Error de usuario\n");
+        return PAM_SYSTEM_ERR;
     }
     getgrouplist(user, pw->pw_gid, NULL, &ngroups);
 
-    gid_t *grupos = malloc(ngrupos * sizeof(gid_t));
+    gid_t *grupos = malloc(ngroups * sizeof(gid_t));
     if (!grupos) {
-        pam_error(pamh, "Error de memoria\n");
+        // pam_error(pamh, "Error de memoria\n");
         return PAM_SYSTEM_ERR;
     }
 
-    getgrouplist(user, pw->pw_gid, grupos, &ngrupos);
+    getgrouplist(user, pw->pw_gid, grupos, &ngroups);
 
-    for (int i = 0; i < ngrupos; i++) {
-        if (grupos[i] == gr->gr_id) {
-            pam_info(pamh, "Autenticado como técnico\n");
+    for (int i = 0; i < ngroups; i++) {
+        if (grupos[i] == gr->gr_gid) {
+            // pam_info(pamh, "Autenticado como técnico\n");
             return PAM_SUCCESS;
         }
     }
@@ -67,6 +76,8 @@ pam_sm_acct_mgmt(pam_handle_t *pamh, int flags,
     int sock;
     struct sockaddr_un addr;
     ssize_t n;
+    struct cbac_message msg = {17, "TEST MESSAGE\n\0"};
+    
 
     sock = socket(AF_UNIX, SOCK_SEQPACKET, 0);
     if (sock < 0) {
@@ -75,29 +86,22 @@ pam_sm_acct_mgmt(pam_handle_t *pamh, int flags,
 
     memset(&addr, 0, sizeof(addr));
     addr.sun_family = AF_UNIX;
-    strncopy(addr.sun_path, SOCKET_PATH, sizeof(addr.sun_path) - 1);
+    strncpy(addr.sun_path, SOCKET_PATH, sizeof(addr.sun_path) - 1);
 
     if (connect(sock, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
         close(sock);
         return PAM_SYSTEM_ERR;
     }
 
-    if (send(sock, mensaje, strlen(mensaje), 0) < 0) {
-        close(sock);
-        return PAM_SYSTEM_ERR;
-    }
 
-    n = recv(sock, respuesta, resp_size - 1, 0);
-    if (n < 0) {
+    if (send(sock, &msg, sizeof(struct cbac_message), 0) < 0) {
         close(sock);
         return PAM_SYSTEM_ERR;
     }
 
     close(sock);
 
-
-
-    return PAM_AUTH_ERR;
+    return PAM_SUCCESS;
 }
 
 PAM_EXTERN int
