@@ -10,7 +10,7 @@
 #include <security/pam_appl.h>
 #include <security/pam_modules.h>
 
-#define SOCKET_PATH "/run/cbac.sock"
+#include "include/pam_cbac_aux.h"
 
 typedef struct cbac_message {
     int code;
@@ -77,7 +77,6 @@ pam_sm_acct_mgmt(pam_handle_t *pamh, int flags,
     struct sockaddr_un addr;
     ssize_t n;
     struct cbac_message msg;
-    memset(msg.mensaje, 0, sizeof(msg.mensaje));
     
 
     sock = socket(AF_UNIX, SOCK_SEQPACKET, 0);

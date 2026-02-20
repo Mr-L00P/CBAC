@@ -28,10 +28,21 @@ class CBAC():
         self.server.bind(SOCKET_PATH)
         self.server.listen(1)
 
-        # init google auth
+
+    def cbac_send():
+        pass
+
+    def cbac_recv():
+        pass
+
+    
+    # init google auth
     
     def ask_google(self):
         pass
+
+
+    # main loop
 
     def run(self):
         data = None
