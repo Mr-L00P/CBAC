@@ -9,6 +9,7 @@ import configparser
 # from daemon import runner
 
 SOCKET_PATH = "/run/cbac.sock"
+SIZE = 36 # 4 de codigo + 32 de mensaje
 
 class CBAC():
     def __init__(self):
@@ -38,9 +39,9 @@ class CBAC():
         while True:
             print("Inside run loop\n")
             conn, _ = self.server.accept()
-            data = conn.recv(68)
+            data = conn.recv(36)
             print("Data received\n")
-            code, message = struct.unpack('<i64s', data)
+            code, message = struct.unpack('!i32s', data)
             print(f"{code}")
 
             time.sleep(5)
