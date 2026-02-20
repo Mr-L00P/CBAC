@@ -12,6 +12,16 @@
 #include <security/pam_appl.h>
 #include <security/pam_modules.h>
 
+int cbac_connect(int sockfd, struct sockaddr_un *addr) {
+    memset(&addr, 0, sizeof(addr));
+    addr->sun_family = AF_UNIX;
+    strncpy(addr->sun_path, SOCKET_PATH, sizeof(addr->sun_path) -1);
+
+    if (connect(sockfd, (struct sockaddr *) &addr, sizeof(addr)) < 0) return -1;
+
+    return 0;
+}
+
 int cbac_create_packet(struct pam_cbac_packet_t *packet, int code, const char *message) {
     return 0;
 }

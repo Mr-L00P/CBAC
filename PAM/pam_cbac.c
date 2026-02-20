@@ -84,11 +84,7 @@ pam_sm_acct_mgmt(pam_handle_t *pamh, int flags,
         return PAM_SYSTEM_ERR;
     }
 
-    memset(&addr, 0, sizeof(addr));
-    addr.sun_family = AF_UNIX;
-    strncpy(addr.sun_path, SOCKET_PATH, sizeof(addr.sun_path) - 1);
-
-    if (connect(sock, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
+    if (cbac_connect(sock, &addr) < 0) {
         close(sock);
         return PAM_SYSTEM_ERR;
     }
