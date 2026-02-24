@@ -75,8 +75,9 @@ pam_sm_acct_mgmt(pam_handle_t *pamh, int flags,
 
     int sock;
     struct sockaddr_un addr;
-    ssize_t n;
     struct cbac_message msg;
+
+    cbac_create_packet(&msg, 17, "TEST MESSAGE");
     
 
     sock = socket(AF_UNIX, SOCK_SEQPACKET, 0);

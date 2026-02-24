@@ -52,8 +52,12 @@ class CBAC():
             conn, _ = self.server.accept()
             data = conn.recv(36)
             print("Data received\n")
+
             code, message = struct.unpack('!i32s', data)
-            print(f"{code}")
+            message = message.rstrip(b'\x00').decode('utf-8')
+
+            print(f"Code: {code}")
+            print(f"Message: {message}")
 
             time.sleep(5)
 

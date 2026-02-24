@@ -8,7 +8,7 @@
 
 // Packet structure
 struct pam_cbac_packet_t {
-    int32_t codigo;
+    int32_t code;
     char message[PAM_CBAC_MSG_SIZE];
 };
 

@@ -23,10 +23,20 @@ int cbac_connect(int sockfd, struct sockaddr_un *addr) {
 }
 
 int cbac_create_packet(struct pam_cbac_packet_t *packet, int code, const char *message) {
+    packet->code = code;
+ 
+    snprintf(packet->message, PAM_CBAC_MSG_SIZE, "%s", message);
+    if (packet->message == NULL) {
+        packet->message[0] = '\0';
+        return -1;
+    }
     return 0;
 }
 
 int cbac_send_packet(int sockfd, const struct pam_cbac_packet_t *packet) {
+    if (send(sockfd, packet, sizeof(struct pam_cbac_packet_t), 0) < 0) {
+        return -1;
+    }
     return 0;
 }
 
