@@ -44,10 +44,6 @@ int cbac_recv_packet(int sockfd, struct pam_cbac_packet_t *packet) {
     return 0;
 }
 
-int cbac_clean_packet(struct pam_cbac_packet_t *packet) {
-    return 0;
-}
-
 int cbac_info(const char *message) {
     return 0;
 }
