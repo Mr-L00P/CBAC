@@ -6,10 +6,18 @@ import struct
 import signal
 import sys
 import configparser
+
+from google.oauth2 import service_account
+from googleapiclient.discovery import build
+
+
 # from daemon import runner
 
 SOCKET_PATH = "/run/cbac.sock"
 SIZE = 36 # 4 de codigo + 32 de mensaje
+
+SERVICE_ACCOUNT_CREDS="/etc/cbac/cbac-488510-b501d8e5547f.json"
+SCOPES = ["https://www.googleapis.com/auth/calendar"]
 
 class CBAC():
     def __init__(self):
@@ -18,6 +26,11 @@ class CBAC():
         self.stderr_path = '/var/log/cbac.err'
         self.pidfile_path =  '/tmp/cbacd.pid'
         self.pidfile_timeout = 5
+
+        self.credentials = service_account.Credentials.from_service_account_file(
+            SERVICE_ACCOUNT_CREDS,
+            scopes=SCOPES
+        )
 
         # init variables with conf file in /etc/cbac/cbac.conf
 
@@ -28,6 +41,8 @@ class CBAC():
         self.server.bind(SOCKET_PATH)
         self.server.listen(1)
 
+        # init google auth 
+
 
     def cbac_send():
         pass
@@ -35,8 +50,6 @@ class CBAC():
     def cbac_recv():
         pass
 
-    
-    # init google auth
     
     def ask_google(self):
         pass

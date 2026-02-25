@@ -13,11 +13,11 @@
 #include <security/pam_modules.h>
 
 int cbac_connect(int sockfd, struct sockaddr_un *addr) {
-    memset(&addr, 0, sizeof(addr));
+    memset(addr, 0, sizeof(struct sockaddr_un));
     addr->sun_family = AF_UNIX;
     strncpy(addr->sun_path, SOCKET_PATH, sizeof(addr->sun_path) -1);
 
-    if (connect(sockfd, (struct sockaddr *) &addr, sizeof(addr)) < 0) return -1;
+    if (connect(sockfd, (struct sockaddr *) addr, sizeof(struct sockaddr)) < 0) return -1;
 
     return 0;
 }

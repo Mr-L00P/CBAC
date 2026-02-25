@@ -14,6 +14,7 @@ struct pam_cbac_packet_t {
 
 
 // CBAC Packet struct functions
+int cbac_connect(int sockfd, struct sockaddr_un *addr);
 int cbac_create_packet(struct pam_cbac_packet_t *packet, int code, const char *message);
 int cbac_send_packet(int sockfd, const struct pam_cbac_packet_t *packet);
 int cbac_recv_packet(int sockfd, struct pam_cbac_packet_t *packet);

@@ -12,11 +12,6 @@
 
 #include "include/pam_cbac_aux.h"
 
-typedef struct cbac_message {
-    int code;
-    char message[64];
-};
-
 PAM_EXTERN int
 pam_sm_authenticate(pam_handle_t *pamh, int flags,
     int argc, const char *argv[])
@@ -75,7 +70,7 @@ pam_sm_acct_mgmt(pam_handle_t *pamh, int flags,
 
     int sock;
     struct sockaddr_un addr;
-    struct cbac_message msg;
+    struct pam_cbac_packet_t msg;
 
     cbac_create_packet(&msg, 17, "TEST MESSAGE");
     
@@ -91,7 +86,7 @@ pam_sm_acct_mgmt(pam_handle_t *pamh, int flags,
     }
 
 
-    if (send(sock, &msg, sizeof(struct cbac_message), 0) < 0) {
+    if (cbac_send_packet(sock, &msg) < 0) {
         close(sock);
         return PAM_SYSTEM_ERR;
     }
