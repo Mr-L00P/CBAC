@@ -10,6 +10,7 @@ import configparser
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 from dotenv import load_dotenv
+load_dotenv()
 
 # from daemon import runner
 
@@ -32,6 +33,11 @@ class CBAC():
             os.getenv("SERVICE_ACCOUNT_CREDS"),
             scopes=SCOPES
         )
+        self.service = build(
+            "calendar",
+            "v3",
+            credentials=self.credentials
+        )
 
         # init variables with conf file in /etc/cbac/cbac.conf
 
@@ -51,7 +57,7 @@ class CBAC():
         if CALENDAR_ID:
             return CALENDAR_ID
 
-        calendar_list = service_account.calendarList().list().execute()
+        calendar_list = self.service.calendarList().list().execute()
         for cal in calendar_list.get("items", []):
             if cal["summary"] == CALENDAR_NAME:
                 CALENDAR_ID = cal["id"]
@@ -61,7 +67,7 @@ class CBAC():
             "summary": CALENDAR_NAME,
             "timeZone": "Europe/Madrid"
         }
-        created = service_account.calendars().insert(body=calendar).execute()
+        created = self.service.calendars().insert(body=calendar).execute()
         CALENDAR_ID = created["id"]
 
         with open(".env", "r") as f:
@@ -75,6 +81,20 @@ class CBAC():
 
         return CALENDAR_ID
 
+    def add_user_to_calendar(self, user_email, role):
+        calendar_id = self.get_or_create_calendar()
+
+        rule = {
+            "scope":{
+                "type":"user",
+                "value":user_email
+            },
+            "role":role
+        }
+
+        created_rule = self.service.acl().insert(calendarId=calendar_id, body=rule).execute()
+
+        return created_rule
 
     def cbac_send():
         pass
@@ -110,7 +130,9 @@ class CBAC():
 
 cbac = CBAC()
 
-cbac.run()
+cbac.add_user_to_calendar("pablofstrecovery@gmail.com", "writer")
+
+# cbac.run()
 
 # daemon_runner = runner.DaemonRunner(cbac)
 # daemon_runner.do_action()
