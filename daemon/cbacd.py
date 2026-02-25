@@ -9,15 +9,16 @@ import configparser
 
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
-
+from dotenv import load_dotenv
 
 # from daemon import runner
 
 SOCKET_PATH = "/run/cbac.sock"
 SIZE = 36 # 4 de codigo + 32 de mensaje
 
-SERVICE_ACCOUNT_CREDS="/etc/cbac/cbac-488510-b501d8e5547f.json"
-SCOPES = ["https://www.googleapis.com/auth/calendar"]
+SCOPES=["https://www.googleapis.com/auth/calendar"]
+CALENDAR_NAME="CBAC Calendar"
+CALENDAR_ID=os.getenv("CALENDAR_ID")
 
 class CBAC():
     def __init__(self):
@@ -28,7 +29,7 @@ class CBAC():
         self.pidfile_timeout = 5
 
         self.credentials = service_account.Credentials.from_service_account_file(
-            SERVICE_ACCOUNT_CREDS,
+            os.getenv("SERVICE_ACCOUNT_CREDS"),
             scopes=SCOPES
         )
 
@@ -44,8 +45,40 @@ class CBAC():
         # init google auth 
 
 
+    def get_or_create_calendar(self):
+        global CALENDAR_ID
+
+        if CALENDAR_ID:
+            return CALENDAR_ID
+
+        calendar_list = service_account.calendarList().list().execute()
+        for cal in calendar_list.get("items", []):
+            if cal["summary"] == CALENDAR_NAME:
+                CALENDAR_ID = cal["id"]
+                return CALENDAR_ID
+            
+        calendar = {
+            "summary": CALENDAR_NAME,
+            "timeZone": "Europe/Madrid"
+        }
+        created = service_account.calendars().insert(body=calendar).execute()
+        CALENDAR_ID = created["id"]
+
+        with open(".env", "r") as f:
+            lines = f.readlines()
+        with open(".env", "w") as f:
+            for line in lines:
+                if line.startswith("CALENDAR_ID="):
+                    f.write(f"CALENDAR_ID={CALENDAR_ID}\n")
+                else:
+                    f.write(line)
+
+        return CALENDAR_ID
+
+
     def cbac_send():
         pass
+
 
     def cbac_recv():
         pass
@@ -53,6 +86,7 @@ class CBAC():
     
     def ask_google(self):
         pass
+
 
 
     # main loop
