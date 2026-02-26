@@ -165,9 +165,9 @@ class CBAC():
 cbac = CBAC()
 
 # cbac.add_user_to_calendar("pablofstrecovery@gmail.com", "writer")
-print(cbac.ask_google("servertfg"))
+# print(cbac.ask_google("servertfg"))
 
-# cbac.run()
+cbac.run()
 
 # daemon_runner = runner.DaemonRunner(cbac)
 # daemon_runner.do_action()
