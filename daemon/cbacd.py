@@ -6,6 +6,7 @@ import struct
 import signal
 import sys
 import configparser
+from datetime import datetime, timezone, timedelta
 
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
@@ -95,16 +96,49 @@ class CBAC():
         created_rule = self.service.acl().insert(calendarId=calendar_id, body=rule).execute()
 
         return created_rule
+    
+    def ask_google(self, user):
+        calendar_id = self.get_or_create_calendar()
+
+        now_dt = datetime.now(timezone.utc)
+        now = now_dt.isoformat()
+
+        curr_event_list = self.service.events().list(
+            calendarId=calendar_id,
+            timeMin=(now_dt - timedelta(hours=2)).isoformat(),
+            timeMax=(now_dt + timedelta(hours=2)).isoformat(),
+            maxResults=10,
+            singleEvents=True,
+            orderBy='startTime'
+        ).execute()
+
+        curr_events = curr_event_list.get('items', [])
+
+        if not curr_events:
+            return "ERROR: No events"
+
+        for event in curr_events:
+            start_str = event["start"].get("dateTime")
+            end_str = event["end"].get("dateTime")
+
+            if not start_str or not end_str:
+                return "ERROR: Time error"
+                
+
+            start_dt = datetime.fromisoformat(start_str)
+            end_dt = datetime.fromisoformat(end_str)
+
+            if (start_dt <= now_dt <= end_dt) and (user == event.get("summary")):
+                return "SUCCESS: Auth successful"
+
+        return "FAILED: Not found"
+
 
     def cbac_send():
         pass
 
 
     def cbac_recv():
-        pass
-
-    
-    def ask_google(self):
         pass
 
 
@@ -130,7 +164,8 @@ class CBAC():
 
 cbac = CBAC()
 
-cbac.add_user_to_calendar("pablofstrecovery@gmail.com", "writer")
+# cbac.add_user_to_calendar("pablofstrecovery@gmail.com", "writer")
+print(cbac.ask_google("servertfg"))
 
 # cbac.run()
 
