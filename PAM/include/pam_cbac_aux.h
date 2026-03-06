@@ -3,6 +3,7 @@
 
 #include <stdint.h>
 
+// Settings
 #define PAM_CBAC_MSG_SIZE 64
 #define SOCKET_PATH "/run/cbac.sock"
 

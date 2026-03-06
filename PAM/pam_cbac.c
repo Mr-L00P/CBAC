@@ -59,7 +59,7 @@ pam_sm_acct_mgmt(pam_handle_t *pamh, int flags,
 
     for (int i = 0; i < ngroups; i++) {
         if (grupos[i] == gr->gr_gid) {
-            // pam_info(pamh, "Autenticado como técnico\n");
+            // cbac_info(pamh, "Autenticado como técnico\n");
             return PAM_SUCCESS;
         }
     }
