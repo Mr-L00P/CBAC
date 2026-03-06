@@ -14,7 +14,6 @@
 #include <security/pam_appl.h>
 #include <security/pam_modules.h>
 
-
 // Settings
 #define PAM_CBAC_MSG_SIZE 64
 #define SOCKET_PATH "/run/cbac.sock"
@@ -42,7 +41,6 @@ struct pam_cbac_packet_t {
 #define CBAC_OKAY(pamh, msg, ...) pam_info(pamh, "[+] - " msg "\n", ##__VA_ARGS__)
 #define CBAC_INFO(pamh, msg, ...) pam_info(pamh, "[*] - " msg "\n", ##__VA_ARGS__)
 #define CBAC_WARN(pamh, msg, ...) pam_info(pamh, "[-] - " msg "\n", ##__VA_ARGS__)
-
 
 // CBAC Packet struct functions
 int cbac_connect(int sockfd, struct sockaddr_un *addr);
