@@ -9,6 +9,8 @@
 #include <sys/un.h>
 #include <security/pam_appl.h>
 #include <security/pam_modules.h>
+#include <security/pam_ext.h>
+#include <arpa/inet.h>
 
 #include "include/pam_cbac_aux.h"
 
@@ -59,10 +61,12 @@ pam_sm_acct_mgmt(pam_handle_t *pamh, int flags,
 
     for (int i = 0; i < ngroups; i++) {
         if (grupos[i] == gr->gr_gid) {
-            // cbac_info(pamh, "Autenticado como técnico\n");
+            CBAC_OKAY(pamh, "Autenticado como técnico");
             return PAM_SUCCESS;
         }
     }
+
+    CBAC_INFO(pamh, "No es técnico, verificando reserva...");
     
 
 
@@ -73,8 +77,7 @@ pam_sm_acct_mgmt(pam_handle_t *pamh, int flags,
     struct pam_cbac_packet_t msg_send;
     struct pam_cbac_packet_t msg_recv;
 
-    cbac_create_packet(&msg_send, 17, "TEST MESSAGE");
-    
+    cbac_create_packet(&msg_send, 17, user);
 
     sock = socket(AF_UNIX, SOCK_SEQPACKET, 0);
     if (sock < 0) {
@@ -104,6 +107,7 @@ pam_sm_acct_mgmt(pam_handle_t *pamh, int flags,
     }
 
     close(sock);
+    CBAC_OKAY(pamh, "Reserva confirmada, autenticado como usuario %s", user);
     return PAM_SUCCESS;
 }
 

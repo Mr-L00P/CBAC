@@ -15,8 +15,18 @@ load_dotenv()
 
 # from daemon import runner
 
+# Settings
 SOCKET_PATH = "/run/cbac.sock"
-SIZE = 36 # 4 de codigo + 32 de mensaje
+PACKET_MESSAGE_SIZE = 64 # 4 de codigo + 64 de mensaje
+PACKET_SIZE = 4 + PACKET_MESSAGE_SIZE
+
+
+# Message codes
+CBAC_SUCCESS     = 0  # User exists and has a reservation
+CBAC_WRONG_USER  = 1  # No reservation, occupied space
+CBAC_EMPTY_SPACE = 2  # No reservation but empty space
+CBAC_API_ERROR   = 3  # Daemon couldn't process request with Google API
+
 
 SCOPES=["https://www.googleapis.com/auth/calendar"]
 CALENDAR_NAME="CBAC Calendar"
@@ -111,23 +121,24 @@ class CBAC():
         curr_events = curr_event_list.get('items', [])
 
         if not curr_events:
-            return "ERROR: No events"
+            return CBAC_API_ERROR
 
         for event in curr_events:
             start_str = event["start"].get("dateTime")
             end_str = event["end"].get("dateTime")
 
             if not start_str or not end_str:
-                return "ERROR: Time error"
+                return CBAC_API_ERROR
                 
 
             start_dt = datetime.fromisoformat(start_str)
             end_dt = datetime.fromisoformat(end_str)
 
             if (start_dt <= now_dt <= end_dt) and (user == event.get("summary")):
-                return "SUCCESS: Auth successful"
+                return CBAC_SUCCESS
 
-        return "FAILED: Not found"
+        return CBAC_WRONG_USER
+
 
     # main loop
 
@@ -137,18 +148,27 @@ class CBAC():
         while True:
             print("Inside run loop\n")
             conn, _ = self.server.accept()
-            data_recv = conn.recv(36)
-            print("Data received\n")
+            data_recv = conn.recv(PACKET_SIZE)
+            print("Data received")
 
-            code, message = struct.unpack('!i32s', data_recv)
-            message = message.rstrip(b'\x00').decode('utf-8')
+            code_recv, message_recv = struct.unpack('!i64s', data_recv)
+            message_recv = message_recv.rstrip(b'\x00').decode('utf-8')
 
-            print(f"Code: {code}")
-            print(f"Message: {message}")
+            print(f"Code: {code_recv}")
+            print(f"Message: {message_recv}\n")
 
 
-            data_send = struct.pack("!i64s", 17, self.ask_google(message))
+            # Packet set
+            code_send = self.ask_google(message_recv)
+            message_send = ""
+
+
+            data_send = struct.pack("!i64s", code_send, message_send.encode())
             conn.sendall(data_send)
+
+            print("Data Sent")
+            print(f"Code: {code_send}")
+            print(f"Message: {message_send}")
 
             time.sleep(5)
 

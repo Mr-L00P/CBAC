@@ -2,7 +2,9 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdint.h>
 #include <unistd.h>
+#include <stdarg.h>
 #include <pwd.h>
 #include <grp.h>
 #include <arpa/inet.h>
@@ -45,9 +47,5 @@ int cbac_recv_packet(int sockfd, struct pam_cbac_packet_t *packet) {
     if (recv(sockfd, packet, sizeof(*packet), 0) < 0) {
         return -1;
     }
-    return 0;
-}
-
-int cbac_info(const char *message) {
     return 0;
 }
