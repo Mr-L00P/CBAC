@@ -1,3 +1,14 @@
+
+# cbacd.py
+# Daemon for CBAC
+
+# TODO: Hacer que sea demonio, no aplicación
+# TODO: Definir configuración de .env e implementarla
+# TODO: Definir comandos de consola que puedan llamar a funciones del demonio desde consola
+# TODO: Función que arregla formato del calendario, log de quien crea eventos sin formato
+# TODO: nombre de evento case-insensitive
+
+
 #!.venv/bin/python3.12
 import time
 import os
@@ -11,9 +22,10 @@ from datetime import datetime, timezone, timedelta
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 from dotenv import load_dotenv
-load_dotenv()
+load_dotenv() 
 
 # from daemon import runner
+
 
 # Settings
 SOCKET_PATH = "/run/cbac.sock"
@@ -22,10 +34,15 @@ PACKET_SIZE = 4 + PACKET_MESSAGE_SIZE
 
 
 # Message codes
-CBAC_SUCCESS     = 0  # User exists and has a reservation
-CBAC_WRONG_USER  = 1  # No reservation, occupied space
-CBAC_EMPTY_SPACE = 2  # No reservation but empty space
-CBAC_API_ERROR   = 3  # Daemon couldn't process request with Google API
+CBAC_SUCCESS      = 0  # User exists and has a reservation
+CBAC_WRONG_USER   = 1  # No reservation, occupied space
+CBAC_EMPTY_SPACE  = 2  # No reservation but empty space
+CBAC_API_ERROR    = 3  # Daemon couldn't process request with Google API
+
+CBAC_CHECK_RESERV = 10 # Asks daemon to check if user can go through. Message set to username to check
+CBAC_MAKE_RESERV  = 11 # Asks daemon to make a reservation from now   Message set to time interval desired
+CBAC_ADD_USER     = 12 # Asks daemon to add user to the calendar of the system
+
 
 
 SCOPES=["https://www.googleapis.com/auth/calendar"]
@@ -138,6 +155,9 @@ class CBAC():
                 return CBAC_SUCCESS
 
         return CBAC_WRONG_USER
+
+    def format_calendar(self):
+        pass
 
 
     # main loop

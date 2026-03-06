@@ -1,3 +1,11 @@
+
+// pam_cbac.c
+// PAM module implementation for CBAC 
+
+// TODO: Tratar respuesta para distintos modos 
+// TODO: Crear paquete de acuerdo con lo requerido
+
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -12,7 +20,8 @@
 #include <security/pam_ext.h>
 #include <arpa/inet.h>
 
-#include "include/pam_cbac_aux.h"
+#include "include/pam_cbac_func.h"
+
 
 PAM_EXTERN int
 pam_sm_authenticate(pam_handle_t *pamh, int flags,
@@ -46,14 +55,12 @@ pam_sm_acct_mgmt(pam_handle_t *pamh, int flags,
     struct group *gr = getgrnam(group_excep);
     struct passwd *pw = getpwnam(user);
     if (gr == NULL || pw == NULL) {
-        // pam_error(pamh, "Error de usuario\n");
         return PAM_SYSTEM_ERR;
     }
     getgrouplist(user, pw->pw_gid, NULL, &ngroups);
 
     gid_t *grupos = malloc(ngroups * sizeof(gid_t));
     if (!grupos) {
-        // pam_error(pamh, "Error de memoria\n");
         return PAM_SYSTEM_ERR;
     }
 
