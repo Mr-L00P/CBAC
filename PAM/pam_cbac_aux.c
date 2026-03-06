@@ -42,6 +42,9 @@ int cbac_send_packet(int sockfd, const struct pam_cbac_packet_t *packet) {
 }
 
 int cbac_recv_packet(int sockfd, struct pam_cbac_packet_t *packet) {
+    if (recv(sockfd, packet, sizeof(*packet), 0) < 0) {
+        return -1;
+    }
     return 0;
 }
 

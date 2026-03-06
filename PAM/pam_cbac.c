@@ -70,9 +70,10 @@ pam_sm_acct_mgmt(pam_handle_t *pamh, int flags,
 
     int sock;
     struct sockaddr_un addr;
-    struct pam_cbac_packet_t msg;
+    struct pam_cbac_packet_t msg_send;
+    struct pam_cbac_packet_t msg_recv;
 
-    cbac_create_packet(&msg, 17, "TEST MESSAGE");
+    cbac_create_packet(&msg_send, 17, "TEST MESSAGE");
     
 
     sock = socket(AF_UNIX, SOCK_SEQPACKET, 0);
@@ -85,14 +86,24 @@ pam_sm_acct_mgmt(pam_handle_t *pamh, int flags,
         return PAM_SYSTEM_ERR;
     }
 
-
-    if (cbac_send_packet(sock, &msg) < 0) {
+    if (cbac_send_packet(sock, &msg_send) < 0) {
         close(sock);
         return PAM_SYSTEM_ERR;
     }
 
-    close(sock);
+    if (cbac_recv_packet(sock, &msg_recv) < 0) {
+        close(sock);
+        return PAM_SYSTEM_ERR;
+    }
 
+    msg_recv.code = ntohl(msg_recv.code);
+
+    if (msg_recv.code != CBAC_SUCCESS) {
+        close(sock);
+        return PAM_AUTH_ERR;
+    }
+
+    close(sock);
     return PAM_SUCCESS;
 }
 

@@ -1,4 +1,4 @@
-#!/usr/bin/python3
+#!.venv/bin/python3.12
 import time
 import os
 import socket
@@ -30,16 +30,6 @@ class CBAC():
         self.pidfile_path =  '/tmp/cbacd.pid'
         self.pidfile_timeout = 5
 
-        self.credentials = service_account.Credentials.from_service_account_file(
-            os.getenv("SERVICE_ACCOUNT_CREDS"),
-            scopes=SCOPES
-        )
-        self.service = build(
-            "calendar",
-            "v3",
-            credentials=self.credentials
-        )
-
         # init variables with conf file in /etc/cbac/cbac.conf
 
         # init socket
@@ -49,7 +39,13 @@ class CBAC():
         self.server.bind(SOCKET_PATH)
         self.server.listen(1)
 
-        # init google auth 
+        # init google API
+        self.credentials = service_account.Credentials.from_service_account_file(
+            os.getenv("SERVICE_ACCOUNT_CREDS"),
+            scopes=SCOPES
+        )
+        self.service = build("calendar", "v3", credentials=self.credentials)
+
 
 
     def get_or_create_calendar(self):
@@ -133,16 +129,6 @@ class CBAC():
 
         return "FAILED: Not found"
 
-
-    def cbac_send():
-        pass
-
-
-    def cbac_recv():
-        pass
-
-
-
     # main loop
 
     def run(self):
@@ -151,14 +137,18 @@ class CBAC():
         while True:
             print("Inside run loop\n")
             conn, _ = self.server.accept()
-            data = conn.recv(36)
+            data_recv = conn.recv(36)
             print("Data received\n")
 
-            code, message = struct.unpack('!i32s', data)
+            code, message = struct.unpack('!i32s', data_recv)
             message = message.rstrip(b'\x00').decode('utf-8')
 
             print(f"Code: {code}")
             print(f"Message: {message}")
+
+
+            data_send = struct.pack("!i64s", 17, self.ask_google(message))
+            conn.sendall(data_send)
 
             time.sleep(5)
 
