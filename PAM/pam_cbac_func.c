@@ -1,4 +1,9 @@
-#include "include/pam_cbac_aux.h"
+
+// pam_cbac_func.c
+// Implementation of auxiliary functions for CBAC
+
+
+#include "include/pam_cbac_func.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -14,6 +19,7 @@
 #include <sys/un.h>
 #include <security/pam_appl.h>
 #include <security/pam_modules.h>
+
 
 int cbac_connect(int sockfd, struct sockaddr_un *addr) {
     memset(addr, 0, sizeof(struct sockaddr_un));
