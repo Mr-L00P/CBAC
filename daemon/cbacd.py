@@ -6,7 +6,7 @@
 # TODO: Definir configuración de .env e implementarla
 # TODO: Definir comandos de consola que puedan llamar a funciones del demonio desde consola
 # TODO: Función que arregla formato del calendario, log de quien crea eventos sin formato
-# TODO: nombre de evento case-insensitive
+# TODO: Terminar tratamiento de paquete
 
 
 #!.venv/bin/python3.12
@@ -34,14 +34,16 @@ PACKET_SIZE = 4 + PACKET_MESSAGE_SIZE
 
 
 # Message codes
-CBAC_SUCCESS      = 0  # User exists and has a reservation
-CBAC_WRONG_USER   = 1  # No reservation, occupied space
-CBAC_EMPTY_SPACE  = 2  # No reservation but empty space
-CBAC_API_ERROR    = 3  # Daemon couldn't process request with Google API
+CBAC_CHECK_SUCCESS = 0  # User exists and has a reservation                          Message set to end of reservation time
+CBAC_USER_CREATED  = 1  # User has been created correctly                            Message set to user's email address
+CBAC_WRONG_USER    = 2  # No reservation, occupied space                             Message empty
+CBAC_EMPTY_SPACE   = 3  # No reservation but empty space                             Message empty
+CBAC_API_ERROR     = 4  # Daemon couldn't process request with Google API            Message set to origin of the error
+CBAC_PARAM_ERROR   = 5  # Params given to daemon not valid                           Message set to origin of the error
 
-CBAC_CHECK_RESERV = 10 # Asks daemon to check if user can go through. Message set to username to check
-CBAC_MAKE_RESERV  = 11 # Asks daemon to make a reservation from now   Message set to time interval desired
-CBAC_ADD_USER     = 12 # Asks daemon to add user to the calendar of the system
+CBAC_CHECK_RESERV  = 10 # Asks daemon to check if user can go through.               Message set to username to check
+CBAC_MAKE_RESERV   = 11 # Asks daemon to make a reservation from now                 Message set to time interval desired
+CBAC_ADD_USER      = 12 # Asks daemon to add user to the calendar of the system.     Message set to user's email address and role, separated by space
 
 
 
@@ -105,8 +107,26 @@ class CBAC():
 
         return CALENDAR_ID
 
+
+
+    def format_calendar(self):
+        pass
+
+
+
+    def create_packet(self, code, message):
+        return struct.pack(f"!i{PACKET_MESSAGE_SIZE}s", code, message.encode())
+
+
+
     def add_user_to_calendar(self, user_email, role):
         calendar_id = self.get_or_create_calendar()
+
+        if not user_email.endswith("@gmail.com"):
+            return self.create_packet(CBAC_PARAM_ERROR, "User address not valid")
+
+        if role not in ["writer", "reader", "freeBusyReader"]:
+            return self.create_packet(CBAC_PARAM_ERROR, "Role not valid")
 
         rule = {
             "scope":{
@@ -118,9 +138,11 @@ class CBAC():
 
         created_rule = self.service.acl().insert(calendarId=calendar_id, body=rule).execute()
 
-        return created_rule
+        return self.create_packet(CBAC_USER_CREATED, user_email)
+
     
-    def ask_google(self, user):
+
+    def check_reserv(self, user) -> struct:
         calendar_id = self.get_or_create_calendar()
 
         now_dt = datetime.now(timezone.utc)
@@ -138,32 +160,49 @@ class CBAC():
         curr_events = curr_event_list.get('items', [])
 
         if not curr_events:
-            return CBAC_API_ERROR
+            return self.create_packet(CBAC_EMPTY_SPACE, "")
 
         for event in curr_events:
             start_str = event["start"].get("dateTime")
             end_str = event["end"].get("dateTime")
 
             if not start_str or not end_str:
-                return CBAC_API_ERROR
+                return self.create_packet(CBAC_API_ERROR, "Time error on API side")
                 
 
             start_dt = datetime.fromisoformat(start_str)
             end_dt = datetime.fromisoformat(end_str)
 
             if (start_dt <= now_dt <= end_dt) and (user == event.get("summary")):
-                return CBAC_SUCCESS
+                return self.create(CBAC_CHECK_SUCCESS, end_str)
 
-        return CBAC_WRONG_USER
-
-    def format_calendar(self):
-        pass
+        return self.create_packet(CBAC_WRONG_USER, "")
 
 
-    # main loop
+
+    def treat_packet(self, data_recv) -> struct:
+        code_recv, message_recv = struct.unpack(f'!i{PACKET_MESSAGE_SIZE}s', data_recv)
+        message_recv = message_recv.rstrip(b'\x00').decode('utf-8')
+
+        data_send = None
+
+        # Tratar según el código
+        if code_recv == CBAC_CHECK_RESERV:
+            data_send = self.check_reserv(message_recv)
+        elif code_recv == CBAC_MAKE_RESERV:
+            pass
+        elif code_recv == CBAC_ADD_USER:
+            user_email, role = message_recv.split()
+            data_send = self.add_user(user_email, role)
+
+        return data_send
+
+
+
+    # Main loop
 
     def run(self):
-        data = None
+        data_recv = None
 
         while True:
             print("Inside run loop\n")
@@ -171,26 +210,24 @@ class CBAC():
             data_recv = conn.recv(PACKET_SIZE)
             print("Data received")
 
-            code_recv, message_recv = struct.unpack('!i64s', data_recv)
+            code_recv, message_recv = struct.unpack(f'!i{PACKET_MESSAGE_SIZE}s', data_recv)
             message_recv = message_recv.rstrip(b'\x00').decode('utf-8')
 
             print(f"Code: {code_recv}")
             print(f"Message: {message_recv}\n")
 
-
-            # Packet set
-            code_send = self.ask_google(message_recv)
-            message_send = ""
-
-
-            data_send = struct.pack("!i64s", code_send, message_send.encode())
+            data_send = self.treat_packet(data_send)
             conn.sendall(data_send)
+
+            code_send, message_send = struct.unpack(f'!i{PACKET_MESSAGE_SIZE}s', data_send)
 
             print("Data Sent")
             print(f"Code: {code_send}")
             print(f"Message: {message_send}")
 
             time.sleep(5)
+
+
 
 cbac = CBAC()
 

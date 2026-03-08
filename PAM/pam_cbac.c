@@ -2,7 +2,7 @@
 // pam_cbac.c
 // PAM module implementation for CBAC 
 
-// TODO: Tratar respuesta para distintos modos 
+// TODO: Tratar respuesta para distintos modos
 // TODO: Crear paquete de acuerdo con lo requerido
 
 
@@ -84,7 +84,7 @@ pam_sm_acct_mgmt(pam_handle_t *pamh, int flags,
     struct pam_cbac_packet_t msg_send;
     struct pam_cbac_packet_t msg_recv;
 
-    cbac_create_packet(&msg_send, 17, user);
+    cbac_create_packet(&msg_send, CBAC_CHECK_RESERV, user);
 
     sock = socket(AF_UNIX, SOCK_SEQPACKET, 0);
     if (sock < 0) {
@@ -108,7 +108,10 @@ pam_sm_acct_mgmt(pam_handle_t *pamh, int flags,
 
     msg_recv.code = ntohl(msg_recv.code);
 
-    if (msg_recv.code != CBAC_SUCCESS) {
+
+    // Tratar paquete
+
+    if (msg_recv.code != CBAC_CHECK_SUCCESS) {
         close(sock);
         return PAM_AUTH_ERR;
     }
