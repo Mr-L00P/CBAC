@@ -68,18 +68,16 @@ pam_sm_acct_mgmt(pam_handle_t *pamh, int flags,
 
     for (int i = 0; i < ngroups; i++) {
         if (grupos[i] == gr->gr_gid) {
-            CBAC_OKAY(pamh, "Autenticado como técnico");
+            CBAC_OKAY(pamh, "Authenticated as administrator.");
             return PAM_SUCCESS;
         }
     }
-
-    CBAC_INFO(pamh, "No es técnico, verificando reserva...");
-    
 
 
     // Conexión a socket, request y respuesta
 
     int sock;
+    int ret;
     struct sockaddr_un addr;
     struct pam_cbac_packet_t msg_send;
     struct pam_cbac_packet_t msg_recv;
@@ -107,18 +105,33 @@ pam_sm_acct_mgmt(pam_handle_t *pamh, int flags,
     }
 
     msg_recv.code = ntohl(msg_recv.code);
+    close(sock);
 
 
-    // Tratar paquete
+    switch(msg_recv.code) {
+    
+    case CBAC_CHECK_RESERV:
+        CBAC_OKAY(pamh, "Reserva confirmada, autenticado como usuario %s", user);
+        ret = PAM_SUCCESS;
+        break;
+    case CBAC_EMPTY_SPACE:
+        CBAC_INFO(pamh, "");
+        break;
+    case CBAC_WRONG_USER:
+        CBAC_WARN(pamh, "Space occupied by another user");
+        ret = PAM_AUTH_ERR;
+        break;
+    case CBAC_API_ERROR:
+        CBAC_WARN(pamh, "Daemon error");
+        ret = PAM_SYSTEM_ERR;
+        break;
+    default:
+        ret = PAM_SYSTEM_ERR;
+        break;
 
-    if (msg_recv.code != CBAC_CHECK_SUCCESS) {
-        close(sock);
-        return PAM_AUTH_ERR;
     }
 
-    close(sock);
-    CBAC_OKAY(pamh, "Reserva confirmada, autenticado como usuario %s", user);
-    return PAM_SUCCESS;
+    return ret;
 }
 
 PAM_EXTERN int
