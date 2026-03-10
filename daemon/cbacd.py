@@ -6,7 +6,6 @@
 # TODO: Definir configuración de .env e implementarla
 # TODO: Definir comandos de consola que puedan llamar a funciones del demonio desde consola
 # TODO: Función que arregla formato del calendario, log de quien crea eventos sin formato
-# TODO: Terminar tratamiento de paquete
 
 
 #!.venv/bin/python3.12
@@ -18,6 +17,7 @@ import signal
 import sys
 import configparser
 from datetime import datetime, timezone, timedelta
+from zoneinfo import ZoneInfo
 
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
@@ -29,21 +29,23 @@ load_dotenv()
 
 # Settings
 SOCKET_PATH = "/run/cbac.sock"
-PACKET_MESSAGE_SIZE = 64 # 4 de codigo + 64 de mensaje
+PACKET_MESSAGE_SIZE = 128 # 4 de codigo + 128 de mensaje
 PACKET_SIZE = 4 + PACKET_MESSAGE_SIZE
 
 
 # Message codes
-CBAC_CHECK_SUCCESS = 0  # User exists and has a reservation                          Message set to end of reservation time
-CBAC_USER_CREATED  = 1  # User has been created correctly                            Message set to user's email address
-CBAC_WRONG_USER    = 2  # No reservation, occupied space                             Message empty
-CBAC_EMPTY_SPACE   = 3  # No reservation but empty space                             Message empty
-CBAC_API_ERROR     = 4  # Daemon couldn't process request with Google API            Message set to origin of the error
-CBAC_PARAM_ERROR   = 5  # Params given to daemon not valid                           Message set to origin of the error
+CBAC_CHECK_SUCCESS  = 0  # User exists and has a reservation                          Message set to end of reservation time
+CBAC_USER_CREATED   = 1  # User has been created correctly                            Message set to user's email address
+CBAC_RESERV_CREATED = 2  # Reservation has been created for user                      Message empty
+CBAC_WRONG_USER     = 3  # No reservation, occupied space                             Message empty
+CBAC_EMPTY_SPACE    = 4  # No reservation but empty space                             Message empty
+CBAC_API_ERROR      = 5  # Daemon couldn't process request with Google API            Message set to origin of the error
+CBAC_PARAM_ERROR    = 6  # Params given to daemon not valid                           Message set to origin of the error
+CBAC_OCCUPIED       = 7  # Time supplied overlaps with event in the calendar          Message informative
 
-CBAC_CHECK_RESERV  = 10 # Asks daemon to check if user can go through.               Message set to username to check
-CBAC_MAKE_RESERV   = 11 # Asks daemon to make a reservation from now                 Message set to time interval desired
-CBAC_ADD_USER      = 12 # Asks daemon to add user to the calendar of the system.     Message set to user's email address and role, separated by space
+CBAC_CHECK_RESERV   = 10 # Asks daemon to check if user can go through.               Message set to username to check
+CBAC_MAKE_RESERV    = 11 # Asks daemon to make a reservation from now                 Message set to user, when, time interval, separated by spaces
+CBAC_ADD_USER       = 12 # Asks daemon to add user to the calendar of the system.     Message set to user's email address and role, separated by space
 
 
 
@@ -91,7 +93,7 @@ class CBAC():
             
         calendar = {
             "summary": CALENDAR_NAME,
-            "timeZone": "Europe/Madrid"
+            "timeZone": f"{os.getenv("TIMEZONE")}"
         }
         created = self.service.calendars().insert(body=calendar).execute()
         CALENDAR_ID = created["id"]
@@ -106,6 +108,56 @@ class CBAC():
                     f.write(line)
 
         return CALENDAR_ID
+    
+
+
+    # Checks the status of a calendar at a given time (datetime format) with a given offset (int in minutes)
+    # Returns the status of the calendar at that time, and if there is an event at the time, returns the event
+    def check_calendar_on_time(self, when, offset):
+        event_list = self.get_events(when)
+
+        when_end = when + timedelta(minutes=offset)
+
+        if event_list == None:
+            return CBAC_EMPTY_SPACE, None
+        
+        for event in event_list:
+            start_str = event["start"].get("dateTime")
+            end_str = event["end"].get("dateTime")
+
+            if not start_str or not end_str:
+                return CBAC_API_ERROR, None
+                
+            start_dt = datetime.fromisoformat(start_str)
+            end_dt = datetime.fromisoformat(end_str)
+
+            if when <= end_dt and start_dt <= when_end:
+                return CBAC_OCCUPIED, event
+            
+        return CBAC_EMPTY_SPACE, None
+            
+
+
+    def get_events(self, when_dt):
+        calendar_id = self.get_or_create_calendar()
+
+        when_str = when_dt.isoformat()
+
+        events = self.service.events().list(
+            calendarId=calendar_id,
+            timeMin=(when_dt - timedelta(hours=2)).isoformat(),
+            timeMax=(when_dt + timedelta(hours=2)).isoformat(),
+            maxResults=10,
+            singleEvents=True,
+            orderBy='startTime'
+        ).execute()
+
+        event_list = events.get('items', [])
+
+        if not event_list:
+            return None
+        
+        return event_list
 
 
 
@@ -116,6 +168,45 @@ class CBAC():
 
     def create_packet(self, code, message):
         return struct.pack(f"!i{PACKET_MESSAGE_SIZE}s", code, message.encode())
+
+
+
+    def make_reserv(self, user, when, offset) -> struct:
+        calendar_id = self.get_or_create_calendar()
+        start_dt = self.parse_timestamp(when)
+
+        if start_dt == None:
+            return self.create_packet(CBAC_PARAM_ERROR, "Timestamp not valid")
+        
+        if not offset.isDigit():
+            return self.create_packet(CBAC_PARAM_ERROR, "Time interval not valid")
+
+        if int(offset) > os.getenv("MAX_TIME"):
+            return self.create_packet(CBAC_PARAM_ERROR, "Requested more than the max time")
+
+        end_dt = start_dt + timedelta(minutes=int(offset))
+
+        if self.check_calendar_on_time(when, int(offset)):
+            event = {
+                "summary": user,
+                "description": "",
+                "start": {
+                    "dateTime": datetime.isoformat(start_dt),
+                    "timeZone": os.getenv("TIMEZONE"),
+                },
+                "end": {
+                    "dateTime": datetime.isoformat(end_dt),
+                    "timeZone": os.getenv("TIMEZONE"),
+                }
+            }
+            insert = self.service.events().insert(
+                calendar_id = calendar_id,
+                body=event
+            ).execute()
+
+            return self.create_packet(CBAC_RESERV_CREATED, "")
+        else:
+            return self.create_packet(CBAC_OCCUPIED, "Time occupied on calendar")
 
 
 
@@ -143,38 +234,21 @@ class CBAC():
     
 
     def check_reserv(self, user) -> struct:
-        calendar_id = self.get_or_create_calendar()
-
-        now_dt = datetime.now(timezone.utc)
+        now_dt = datetime.now(ZoneInfo(os.getenv("TIMEZONE")))
         now = now_dt.isoformat()
 
-        curr_event_list = self.service.events().list(
-            calendarId=calendar_id,
-            timeMin=(now_dt - timedelta(hours=2)).isoformat(),
-            timeMax=(now_dt + timedelta(hours=2)).isoformat(),
-            maxResults=10,
-            singleEvents=True,
-            orderBy='startTime'
-        ).execute()
+        curr_events = self.get_events(now_dt)
 
-        curr_events = curr_event_list.get('items', [])
-
-        if not curr_events:
+        if curr_events == None:
             return self.create_packet(CBAC_EMPTY_SPACE, "")
 
-        for event in curr_events:
-            start_str = event["start"].get("dateTime")
-            end_str = event["end"].get("dateTime")
+        status, event = self.check_calendar_on_time(now_dt, 0)
 
-            if not start_str or not end_str:
-                return self.create_packet(CBAC_API_ERROR, "Time error on API side")
-                
-
-            start_dt = datetime.fromisoformat(start_str)
-            end_dt = datetime.fromisoformat(end_str)
-
-            if (start_dt <= now_dt <= end_dt) and (user == event.get("summary")):
-                return self.create(CBAC_CHECK_SUCCESS, end_str)
+        if status == CBAC_OCCUPIED:
+            if event["summary"] == user:
+                return self.create_packet(CBAC_CHECK_RESERV, event["end"].get("dateTime"))
+            else:
+                return self.create_packet(CBAC_WRONG_USER, event["end"].get("dateTime"))
 
         return self.create_packet(CBAC_WRONG_USER, "")
 
@@ -190,12 +264,27 @@ class CBAC():
         if code_recv == CBAC_CHECK_RESERV:
             data_send = self.check_reserv(message_recv)
         elif code_recv == CBAC_MAKE_RESERV:
-            pass
+            user, when, time = message_recv.split()
+            data_send = self.make_reserv(user, when, time)
         elif code_recv == CBAC_ADD_USER:
             user_email, role = message_recv.split()
             data_send = self.add_user(user_email, role)
 
         return data_send
+
+
+
+
+    # Aux functions
+
+    def parse_timestamp(s: str):
+        try:
+            dt = datetime.fromisoformat(s)
+            if dt.tzinfo is not None:
+                raise ValueError("Timezone no permitida")
+            return dt
+        except ValueError:
+            return None
 
 
 
@@ -216,7 +305,7 @@ class CBAC():
             print(f"Code: {code_recv}")
             print(f"Message: {message_recv}\n")
 
-            data_send = self.treat_packet(data_send)
+            data_send = self.treat_packet(data_recv)
             conn.sendall(data_send)
 
             code_send, message_send = struct.unpack(f'!i{PACKET_MESSAGE_SIZE}s', data_send)
