@@ -181,7 +181,7 @@ class CBAC():
         if not offset.isDigit():
             return self.create_packet(CBAC_PARAM_ERROR, "Time interval not valid")
 
-        if int(offset) > os.getenv("MAX_TIME"):
+        if int(offset) > int(os.getenv("MAX_TIME")):
             return self.create_packet(CBAC_PARAM_ERROR, "Requested more than the max time")
 
         end_dt = start_dt + timedelta(minutes=int(offset))
