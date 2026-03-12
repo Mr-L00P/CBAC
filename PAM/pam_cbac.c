@@ -147,15 +147,10 @@ pam_sm_acct_mgmt(pam_handle_t *pamh, int flags,
 
             cbac_create_packet(&data_send, CBAC_MAKE_RESERV, msg);
 
-            CBAC_INFO(pamh, "Packet created");
-
-
             if (cbac_send_packet(sock, &data_send) < 0) {
                 close(sock);
                 return PAM_SYSTEM_ERR;
             }
-
-            CBAC_OKAY(pamh, "Packet sent");
 
             if (cbac_recv_packet(sock, &data_recv) < 0) {
                 close(sock);
@@ -163,7 +158,6 @@ pam_sm_acct_mgmt(pam_handle_t *pamh, int flags,
             }
 
             data_recv.code = ntohl(data_recv.code);
-            CBAC_INFO(pamh, "Current code is %d", data_recv.code);
         
             if (data_recv.code == CBAC_RESERV_CREATED) {
                 close(sock);

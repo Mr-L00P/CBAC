@@ -40,9 +40,9 @@ struct pam_cbac_packet_t {
 
 
 // Info conv macros for PAM
-#define CBAC_OKAY(pamh, msg, ...) pam_info(pamh, "[+] - " msg "\n", ##__VA_ARGS__)
-#define CBAC_INFO(pamh, msg, ...) pam_info(pamh, "[*] - " msg "\n", ##__VA_ARGS__)
-#define CBAC_WARN(pamh, msg, ...) pam_info(pamh, "[-] - " msg "\n", ##__VA_ARGS__)
+#define CBAC_OKAY(pamh, msg, ...) pam_info(pamh, "\n[+] - " msg "\n", ##__VA_ARGS__)
+#define CBAC_INFO(pamh, msg, ...) pam_info(pamh, "\n[*] - " msg "\n", ##__VA_ARGS__)
+#define CBAC_WARN(pamh, msg, ...) pam_info(pamh, "\n[-] - " msg "\n", ##__VA_ARGS__)
 
 
 // CBAC Packet struct functions
