@@ -141,8 +141,6 @@ class CBAC():
     def get_events(self, when_dt):
         calendar_id = self.get_or_create_calendar()
 
-        when_str = when_dt.isoformat()
-
         events = self.service.events().list(
             calendarId=calendar_id,
             timeMin=(when_dt - timedelta(hours=2)).isoformat(),
@@ -178,7 +176,7 @@ class CBAC():
         if start_dt == None:
             return self.create_packet(CBAC_PARAM_ERROR, "Timestamp not valid")
         
-        if not offset.isDigit():
+        if not offset.isdigit():
             return self.create_packet(CBAC_PARAM_ERROR, "Time interval not valid")
 
         if int(offset) > int(os.getenv("MAX_TIME")):
@@ -186,7 +184,7 @@ class CBAC():
 
         end_dt = start_dt + timedelta(minutes=int(offset))
 
-        if self.check_calendar_on_time(when, int(offset)):
+        if self.check_calendar_on_time(start_dt, int(offset)):
             event = {
                 "summary": user,
                 "description": "",
@@ -200,7 +198,7 @@ class CBAC():
                 }
             }
             insert = self.service.events().insert(
-                calendar_id = calendar_id,
+                calendarId = calendar_id,
                 body=event
             ).execute()
 
@@ -235,7 +233,7 @@ class CBAC():
 
     def check_reserv(self, user) -> struct:
         now_dt = datetime.now(ZoneInfo(os.getenv("TIMEZONE")))
-        now = now_dt.isoformat()
+        now = datetime.isoformat(now_dt)
 
         curr_events = self.get_events(now_dt)
 
@@ -277,10 +275,10 @@ class CBAC():
 
     # Aux functions
 
-    def parse_timestamp(s: str):
+    def parse_timestamp(self, s: str):
         try:
             dt = datetime.fromisoformat(s)
-            if dt.tzinfo is not None:
+            if dt.tzinfo != timezone.utc:
                 raise ValueError("Timezone no permitida")
             return dt
         except ValueError:
@@ -296,25 +294,31 @@ class CBAC():
         while True:
             print("Inside run loop\n")
             conn, _ = self.server.accept()
-            data_recv = conn.recv(PACKET_SIZE)
-            print("Data received")
+            while True:
+                data_recv = conn.recv(PACKET_SIZE)
 
-            code_recv, message_recv = struct.unpack(f'!i{PACKET_MESSAGE_SIZE}s', data_recv)
-            message_recv = message_recv.rstrip(b'\x00').decode('utf-8')
+                if not data_recv:
+                    print("Client disconnected")
+                    break
 
-            print(f"Code: {code_recv}")
-            print(f"Message: {message_recv}\n")
+                print("Data received")
 
-            data_send = self.treat_packet(data_recv)
-            conn.sendall(data_send)
+                code_recv, message_recv = struct.unpack(f'!i{PACKET_MESSAGE_SIZE}s', data_recv)
+                message_recv = message_recv.rstrip(b'\x00').decode('utf-8')
 
-            code_send, message_send = struct.unpack(f'!i{PACKET_MESSAGE_SIZE}s', data_send)
+                print(f"Code: {code_recv}")
+                print(f"Message: {message_recv}\n")
 
-            print("Data Sent")
-            print(f"Code: {code_send}")
-            print(f"Message: {message_send}")
+                data_send = self.treat_packet(data_recv)
+                conn.sendall(data_send)
 
-            time.sleep(5)
+                code_send, message_send = struct.unpack(f'!i{PACKET_MESSAGE_SIZE}s', data_send)
+
+                print("Data Sent")
+                print(f"Code: {code_send}")
+                print(f"Message: {message_send}")
+
+            # time.sleep(5)
 
 
 

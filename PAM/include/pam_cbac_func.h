@@ -2,9 +2,6 @@
 // pam_cbac_func.h 
 // Definitions and declarations for CBAC
 
-// TODO: Definir el resto de códigos de mensaje, mensajes enviados por PAM
-//       IMPORTANTE: También definir en cbacd.py
-
 
 #ifndef PAM_CBAC_AUX_H
 #define PAM_CBAC_AUX_H

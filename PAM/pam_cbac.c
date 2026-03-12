@@ -37,164 +37,170 @@ pam_sm_setcred(pam_handle_t *pamh, int flags,
     return PAM_SUCCESS;
 }
 
-    PAM_EXTERN int
-    pam_sm_acct_mgmt(pam_handle_t *pamh, int flags,
-        int argc, const char *argv[])
-    {
+PAM_EXTERN int
+pam_sm_acct_mgmt(pam_handle_t *pamh, int flags,
+    int argc, const char *argv[])
+{
 
-        // Dejar pasar a un grupo en específico
+    // Dejar pasar a un grupo en específico
 
-        const char *user = NULL;
-        int ngroups = 0;
-        pam_get_item(pamh, PAM_USER, (const void **)&user);
+    const char *user = NULL;
+    int ngroups = 0;
+    pam_get_item(pamh, PAM_USER, (const void **)&user);
 
-        const char *group_excep = "tecnicos";
+    const char *group_excep = "tecnicos";
 
-        struct group *gr = getgrnam(group_excep);
-        struct passwd *pw = getpwnam(user);
-        if (gr == NULL || pw == NULL) {
+    struct group *gr = getgrnam(group_excep);
+    struct passwd *pw = getpwnam(user);
+    if (gr == NULL || pw == NULL) {
+        return PAM_SYSTEM_ERR;
+    }
+    getgrouplist(user, pw->pw_gid, NULL, &ngroups);
+
+    gid_t *grupos = malloc(ngroups * sizeof(gid_t));
+    if (!grupos) {
+        return PAM_SYSTEM_ERR;
+    }
+
+    getgrouplist(user, pw->pw_gid, grupos, &ngroups);
+
+    for (int i = 0; i < ngroups; i++) {
+        if (grupos[i] == gr->gr_gid) {
+            CBAC_OKAY(pamh, "Authenticated as administrator.");
+            return PAM_SUCCESS;
+        }
+    }
+
+
+    // Conexión a socket, request y respuesta
+
+    int sock;
+    struct sockaddr_un addr;
+    struct pam_cbac_packet_t data_send;
+    struct pam_cbac_packet_t data_recv;
+
+    cbac_create_packet(&data_send, CBAC_CHECK_RESERV, user);
+
+    sock = socket(AF_UNIX, SOCK_SEQPACKET, 0);
+    if (sock < 0) {
+        return PAM_SYSTEM_ERR;
+    }
+
+    if (cbac_connect(sock, &addr) < 0) {
+        close(sock);
+        return PAM_SYSTEM_ERR;
+    }
+
+    if (cbac_send_packet(sock, &data_send) < 0) {
+        close(sock);
+        return PAM_SYSTEM_ERR;
+    }
+
+    if (cbac_recv_packet(sock, &data_recv) < 0) {
+        close(sock);
+        return PAM_SYSTEM_ERR;
+    }
+
+    data_recv.code = ntohl(data_recv.code);
+
+    switch(data_recv.code) {
+    
+    case CBAC_CHECK_RESERV:
+        CBAC_OKAY(pamh, "Reservation verified, authenticated as %s", user);
+        return PAM_SUCCESS;
+        break;
+    case CBAC_EMPTY_SPACE:
+        CBAC_INFO(pamh, "User doesn't have a reservation but no one else is using the server");
+
+        char *response = NULL;
+
+        if (pam_prompt(pamh, PAM_PROMPT_ECHO_ON, &response, "Do you wish to make a reservation for now? yes/(no): ") != PAM_SUCCESS) {
+            CBAC_WARN(pamh, "Error with prompt");
             return PAM_SYSTEM_ERR;
         }
-        getgrouplist(user, pw->pw_gid, NULL, &ngroups);
 
-        gid_t *grupos = malloc(ngroups * sizeof(gid_t));
-        if (!grupos) {
-            return PAM_SYSTEM_ERR;
-        }
+        if (strcmp(response, "yes") == 0) {
+            free(response);
+            response = NULL;
+            char msg[PAM_CBAC_MSG_SIZE];
+            int minutes;
 
-        getgrouplist(user, pw->pw_gid, grupos, &ngroups);
-
-        for (int i = 0; i < ngroups; i++) {
-            if (grupos[i] == gr->gr_gid) {
-                CBAC_OKAY(pamh, "Authenticated as administrator.");
-                return PAM_SUCCESS;
-            }
-        }
-
-
-        // Conexión a socket, request y respuesta
-
-        int sock;
-        int ret;
-        struct sockaddr_un addr;
-        struct pam_cbac_packet_t data_send;
-        struct pam_cbac_packet_t data_recv;
-
-        cbac_create_packet(&data_send, CBAC_CHECK_RESERV, user);
-
-        sock = socket(AF_UNIX, SOCK_SEQPACKET, 0);
-        if (sock < 0) {
-            return PAM_SYSTEM_ERR;
-        }
-
-        if (cbac_connect(sock, &addr) < 0) {
-            close(sock);
-            return PAM_SYSTEM_ERR;
-        }
-
-        if (cbac_send_packet(sock, &data_send) < 0) {
-            close(sock);
-            return PAM_SYSTEM_ERR;
-        }
-
-        if (cbac_recv_packet(sock, &data_recv) < 0) {
-            close(sock);
-            return PAM_SYSTEM_ERR;
-        }
-
-        data_recv.code = ntohl(data_recv.code);
-
-        switch(data_recv.code) {
-        
-        case CBAC_CHECK_RESERV:
-            CBAC_OKAY(pamh, "Reservation verified, authenticated as %s", user);
-            ret = PAM_SUCCESS;
-            break;
-        case CBAC_EMPTY_SPACE:
-            CBAC_INFO(pamh, "User doesn't have a reservation but no one else is using the server");
-
-            char *response = NULL;
-
-            if (pam_prompt(pamh, PAM_PROMPT_ECHO_ON, &response, "Do you wish to make a reservation for now? yes/(no): ") != PAM_SUCCESS) {
+            if (pam_prompt(pamh, PAM_PROMPT_ECHO_ON, &response, "Input the number of minutes you want for your reservation: ") != PAM_SUCCESS) {
                 CBAC_WARN(pamh, "Error with prompt");
                 return PAM_SYSTEM_ERR;
             }
 
-            if (strcmp(response, "yes") == 0) {
-                free(response);
-                response = NULL;
-                char msg[128];
-                int minutes;
-
-                if (pam_prompt(pamh, PAM_PROMPT_ECHO_ON, &response, "Input the number of minutes you want for your reservation: ") != PAM_SUCCESS) {
-                    CBAC_WARN(pamh, "Error with prompt");
-                    return PAM_SYSTEM_ERR;
-                }
-
-                if (atoi(response) == 0) {
-                    CBAC_WARN(pamh, "No minutes supplied, exiting...");
-                    return PAM_AUTH_ERR;
-                }
-
-                minutes = atoi(response);
-                free(response);
-
-                // Get local time to solicit reservation to daemon
-                time_t now = time(NULL);
-                struct tm *tm_info = localtime(&now);
-                char now_dt[32];
-                strftime(now_dt, sizeof(now_dt), "%Y-%m-%dT%H:%M:%S", tm_info);
-                snprintf(msg, 128, "%s %s %d", user, now_dt, minutes);
-
-                cbac_create_packet(&data_send, CBAC_MAKE_RESERV, msg);
-
-
-                if (cbac_send_packet(sock, &data_send) < 0) {
-                    close(sock);
-                    return PAM_SYSTEM_ERR;
-                }
-
-                if (cbac_recv_packet(sock, &data_recv) < 0) {
-                    close(sock);
-                    return PAM_SYSTEM_ERR;
-                }
-            
-                if (data_recv.code == CBAC_RESERV_CREATED) {
-                    close(sock);
-                    CBAC_OKAY(pamh, "Reservation created for user %s for %d minutes", user, minutes);
-                    ret = PAM_SUCCESS;
-                }
-                else {
-                    close(sock);
-                    CBAC_WARN(pamh, "Error, daemon returned: %s", data_recv.message);
-                    ret = PAM_AUTH_ERR;
-                }   
-            }
-            else {
-                close(sock);
-                CBAC_INFO(pamh, "No reservation created, exiting...");
+            if (atoi(response) == 0) {
+                CBAC_WARN(pamh, "No minutes supplied, exiting...");
                 return PAM_AUTH_ERR;
             }
 
-            break;
-        case CBAC_WRONG_USER:
-            CBAC_WARN(pamh, "Space occupied by another user");
-            ret = PAM_AUTH_ERR;
-            break;
-        case CBAC_API_ERROR:
-            CBAC_WARN(pamh, "Daemon error");
-            ret = PAM_SYSTEM_ERR;
-            break;
-        default:
-            ret = PAM_SYSTEM_ERR;
-            break;
+            minutes = atoi(response);
+            free(response);
 
+            // Get local time to solicit reservation to daemon
+            time_t now = time(NULL);
+            struct tm *tm_info = localtime(&now);
+            char now_dt[32];
+            strftime(now_dt, sizeof(now_dt), "%Y-%m-%dT%H:%M:%SZ", tm_info);
+            snprintf(msg, 128, "%s %s %d", user, now_dt, minutes);
+
+            cbac_create_packet(&data_send, CBAC_MAKE_RESERV, msg);
+
+            CBAC_INFO(pamh, "Packet created");
+
+
+            if (cbac_send_packet(sock, &data_send) < 0) {
+                close(sock);
+                return PAM_SYSTEM_ERR;
+            }
+
+            CBAC_OKAY(pamh, "Packet sent");
+
+            if (cbac_recv_packet(sock, &data_recv) < 0) {
+                close(sock);
+                return PAM_SYSTEM_ERR;
+            }
+
+            data_recv.code = ntohl(data_recv.code);
+            CBAC_INFO(pamh, "Current code is %d", data_recv.code);
+        
+            if (data_recv.code == CBAC_RESERV_CREATED) {
+                close(sock);
+                CBAC_OKAY(pamh, "Reservation created for user %s for %d minutes", user, minutes);
+                return PAM_SUCCESS;
+            }
+            else {
+                close(sock);
+                CBAC_WARN(pamh, "Error, daemon returned: %s", data_recv.message);
+                return PAM_AUTH_ERR;
+            }   
+        }
+        else {
+            close(sock);
+            CBAC_INFO(pamh, "No reservation created, exiting...");
+            return PAM_AUTH_ERR;
         }
 
-        close(sock);
+        break;
+    case CBAC_WRONG_USER:
+        CBAC_WARN(pamh, "Space occupied by another user");
+        return PAM_AUTH_ERR;
+        break;
+    case CBAC_API_ERROR:
+        CBAC_WARN(pamh, "Daemon error");
+        return PAM_SYSTEM_ERR;
+        break;
+    default:
+        return PAM_SYSTEM_ERR;
+        break;
 
-        return ret;
     }
+
+    close(sock);
+
+    return PAM_AUTH_ERR;
+}
 
 PAM_EXTERN int
 pam_sm_open_session(pam_handle_t *pamh, int flags,
