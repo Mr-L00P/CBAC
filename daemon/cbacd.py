@@ -16,6 +16,7 @@ import struct
 import signal
 import sys
 import configparser
+import threading
 from datetime import datetime, timezone, timedelta
 from zoneinfo import ZoneInfo
 
@@ -33,7 +34,7 @@ PACKET_MESSAGE_SIZE = 128 # 4 de codigo + 128 de mensaje
 PACKET_SIZE = 4 + PACKET_MESSAGE_SIZE
 
 
-# Message codes
+# Packet response codes
 CBAC_CHECK_SUCCESS  = 0  # User exists and has a reservation                          Message set to end of reservation time
 CBAC_USER_CREATED   = 1  # User has been created correctly                            Message set to user's email address
 CBAC_RESERV_CREATED = 2  # Reservation has been created for user                      Message empty
@@ -43,6 +44,7 @@ CBAC_API_ERROR      = 5  # Daemon couldn't process request with Google API      
 CBAC_PARAM_ERROR    = 6  # Params given to daemon not valid                           Message set to origin of the error
 CBAC_OCCUPIED       = 7  # Time supplied overlaps with event in the calendar          Message informative
 
+# Packet request codes
 CBAC_CHECK_RESERV   = 10 # Asks daemon to check if user can go through.               Message set to username to check
 CBAC_MAKE_RESERV    = 11 # Asks daemon to make a reservation from now                 Message set to user, when, time interval, separated by spaces
 CBAC_ADD_USER       = 12 # Asks daemon to add user to the calendar of the system.     Message set to user's email address and role, separated by space
@@ -52,6 +54,15 @@ CBAC_ADD_USER       = 12 # Asks daemon to add user to the calendar of the system
 SCOPES=["https://www.googleapis.com/auth/calendar"]
 CALENDAR_NAME="CBAC Calendar"
 CALENDAR_ID=os.getenv("CALENDAR_ID")
+
+
+
+# Types of message to sent to user, useful only in message_user()
+i = 0
+k = 1
+e = 2
+
+
 
 class CBAC():
     def __init__(self):
@@ -79,7 +90,8 @@ class CBAC():
 
 
 
-    def get_or_create_calendar(self):
+    # Returns the ID of the current calendar or creates the calendar, sets the env variable and returns it.
+    def get_or_create_calendar(self) -> str:
         global CALENDAR_ID
 
         if CALENDAR_ID:
@@ -111,12 +123,11 @@ class CBAC():
     
 
 
-    # Checks the status of a calendar at a given time (datetime format) with a given offset (int in minutes)
     # Returns the status of the calendar at that time, and if there is an event at the time, returns the event
-    def check_calendar_on_time(self, when, offset):
-        event_list = self.get_events(when)
+    def check_calendar_on_time(self, when_dt: datetime, offset: int):
+        event_list = self.get_events(when_dt)
 
-        when_end = when + timedelta(minutes=offset)
+        when_end = when_dt + timedelta(minutes=offset)
 
         if event_list == None:
             return CBAC_EMPTY_SPACE, None
@@ -131,14 +142,15 @@ class CBAC():
             start_dt = datetime.fromisoformat(start_str)
             end_dt = datetime.fromisoformat(end_str)
 
-            if when <= end_dt and start_dt <= when_end:
+            if when_dt <= end_dt and start_dt <= when_end:
                 return CBAC_OCCUPIED, event
             
         return CBAC_EMPTY_SPACE, None
             
 
 
-    def get_events(self, when_dt):
+    # Returns a list of event objects from the API within a time frame from a given datetime
+    def get_events(self, when_dt: datetime):
         calendar_id = self.get_or_create_calendar()
 
         events = self.service.events().list(
@@ -159,17 +171,19 @@ class CBAC():
 
 
 
-    def format_calendar(self):
+    # Function to delete the events on the calendar with a given time, logs the event and user of the deleted events
+    def format_calendar(self, when_dt: datetime):
         pass
 
 
-
-    def create_packet(self, code, message):
+    # Creates and returns the packet with a given code and message
+    def create_packet(self, code: str, message: str) -> struct:
         return struct.pack(f"!i{PACKET_MESSAGE_SIZE}s", code, message.encode())
 
 
 
-    def make_reserv(self, user, when, offset) -> struct:
+    # Attempts to make a reservation and returns the status struct to send back to the client
+    def make_reserv(self, user: str, when: str, offset: str) -> struct:
         calendar_id = self.get_or_create_calendar()
         start_dt = self.parse_timestamp(when)
 
@@ -208,7 +222,8 @@ class CBAC():
 
 
 
-    def add_user_to_calendar(self, user_email, role):
+    # Attempts to add user to the calendar and returns the status struct to send back to the client  
+    def add_user_to_calendar(self, user_email: str, role: str):
         calendar_id = self.get_or_create_calendar()
 
         if not user_email.endswith("@gmail.com"):
@@ -231,7 +246,8 @@ class CBAC():
 
     
 
-    def check_reserv(self, user) -> struct:
+    # Checks if the current event on the calendar matches the user supplied
+    def check_reserv(self, user: str) -> struct:
         now_dt = datetime.now(ZoneInfo(os.getenv("TIMEZONE")))
         now = datetime.isoformat(now_dt)
 
@@ -244,7 +260,7 @@ class CBAC():
 
         if status == CBAC_OCCUPIED:
             if event["summary"] == user:
-                return self.create_packet(CBAC_CHECK_RESERV, event["end"].get("dateTime"))
+                return self.create_packet(CBAC_CHECK_SUCCESS, event["end"].get("dateTime"))
             else:
                 return self.create_packet(CBAC_WRONG_USER, event["end"].get("dateTime"))
 
@@ -252,6 +268,7 @@ class CBAC():
 
 
 
+    # Main logic to process packets based on the code, returns the corresponding struct to send back to client
     def treat_packet(self, data_recv) -> struct:
         code_recv, message_recv = struct.unpack(f'!i{PACKET_MESSAGE_SIZE}s', data_recv)
         message_recv = message_recv.rstrip(b'\x00').decode('utf-8')
@@ -272,18 +289,47 @@ class CBAC():
 
 
 
-
-    # Aux functions
-
-    def parse_timestamp(self, s: str):
+    def parse_timestamp(self, when: str):
         try:
-            dt = datetime.fromisoformat(s)
+            dt = datetime.fromisoformat(when)
             if dt.tzinfo != timezone.utc:
                 raise ValueError("Timezone no permitida")
             return dt
         except ValueError:
             return None
 
+
+
+    # Sends message to the client through the terminal they're connected to via SSH, additionally you can add a type to make the message informative, a confirmation
+    # or an error, used for direct communication with client without requiring an initial connection from the client
+    def message_user(self,user: str, message: str, type=None):
+        if type == i:
+            message = "[*] - " + message
+        elif type == k:
+            message = "[+] - " + message
+        elif type == e:
+            message = "[-] - " + message
+        
+        pass
+
+
+
+    # Thread for the current ssh session, informative messages and eventually termination of the process
+    def handle_session(self, user: str, time_left: timedelta):
+        print("Waiting time left of reservation...")
+        secs_left = time_left.total_seconds()
+        
+        if secs_left < 300:
+            self.message_user(user, "Less than 5 minutes remaning before session is terminated automatically", i)
+            time.sleep(secs_left)
+        else:
+            time.sleep(secs_left - 300)
+            self.message_user(user, "5 minutes remaining for session to be terminated automatically", i)
+            time.sleep(300)
+            
+        self.message_user(user, "Session ended, forcefully terminating process...", e)
+        print("Killing ssh process of user")
+        os.system(f"pkill -u {user} -f sshd")
 
 
     # Main loop
@@ -310,9 +356,14 @@ class CBAC():
                 print(f"Message: {message_recv}\n")
 
                 data_send = self.treat_packet(data_recv)
+                code_send, message_send = struct.unpack(f'!i{PACKET_MESSAGE_SIZE}s', data_send)
+                message_send = message_send.rstrip(b'\x00').decode('utf-8')
                 conn.sendall(data_send)
 
-                code_send, message_send = struct.unpack(f'!i{PACKET_MESSAGE_SIZE}s', data_send)
+                if code_send == CBAC_CHECK_SUCCESS:
+                    time_left = (datetime.fromisoformat(message_send) - datetime.now(timezone.utc))
+                    conn_thread = threading.Thread(target=self.handle_session, args=(message_recv, time_left, ))
+                    conn_thread.start()
 
                 print("Data Sent")
                 print(f"Code: {code_send}")
@@ -321,13 +372,6 @@ class CBAC():
             # time.sleep(5)
 
 
-
-cbac = CBAC()
-
-# cbac.add_user_to_calendar("pablofstrecovery@gmail.com", "writer")
-# print(cbac.ask_google("servertfg"))
-
-cbac.run()
-
-# daemon_runner = runner.DaemonRunner(cbac)
-# daemon_runner.do_action()
+if __name__ == "__main__":
+    cbac = CBAC()
+    cbac.run()

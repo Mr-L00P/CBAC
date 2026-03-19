@@ -105,7 +105,7 @@ pam_sm_acct_mgmt(pam_handle_t *pamh, int flags,
 
     switch(data_recv.code) {
     
-    case CBAC_CHECK_RESERV:
+    case CBAC_CHECK_SUCCESS:
         CBAC_OKAY(pamh, "Reservation verified, authenticated as %s", user);
         return PAM_SUCCESS;
         break;
@@ -142,7 +142,7 @@ pam_sm_acct_mgmt(pam_handle_t *pamh, int flags,
             time_t now = time(NULL);
             struct tm *tm_info = localtime(&now);
             char now_dt[32];
-            strftime(now_dt, sizeof(now_dt), "%Y-%m-%dT%H:%M:%SZ", tm_info);
+            strftime(now_dt, sizeof(now_dt), "%Y-%m-%dT%H:%M:%S%z", tm_info);
             snprintf(msg, 128, "%s %s %d", user, now_dt, minutes);
 
             cbac_create_packet(&data_send, CBAC_MAKE_RESERV, msg);
