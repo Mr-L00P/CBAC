@@ -14,7 +14,7 @@
 
 // Settings
 #define PAM_CBAC_MSG_SIZE 128
-#define SOCKET_PATH "/run/cbac.sock"
+#define SOCKET_PATH "/run//cbacd/cbac.sock"
 
 
 // Packet structure

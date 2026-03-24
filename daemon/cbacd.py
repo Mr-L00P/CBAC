@@ -2,15 +2,14 @@
 # cbacd.py
 # Daemon for CBAC
 
-# TODO: Hacer que sea demonio, no aplicación
 # TODO: Definir configuración de .env e implementarla
-# TODO: Definir comandos de consola que puedan llamar a funciones del demonio desde consola
 # TODO: Función que arregla formato del calendario, log de quien crea eventos sin formato
 
 
 #!.venv/bin/python3.12
 import time
 import os
+import subprocess
 import socket
 import struct
 import signal
@@ -29,7 +28,7 @@ load_dotenv()
 
 
 # Settings
-SOCKET_PATH = "/run/cbac.sock"
+SOCKET_PATH = "/run/cbacd/cbac.sock"
 PACKET_MESSAGE_SIZE = 128 # 4 de codigo + 128 de mensaje
 PACKET_SIZE = 4 + PACKET_MESSAGE_SIZE
 
@@ -302,7 +301,7 @@ class CBAC():
 
     # Sends message to the client through the terminal they're connected to via SSH, additionally you can add a type to make the message informative, a confirmation
     # or an error, used for direct communication with client without requiring an initial connection from the client
-    def message_user(self,user: str, message: str, type=None):
+    def message_sessions(self,user: str, message: str, type=None):
         if type == i:
             message = "[*] - " + message
         elif type == k:
@@ -310,26 +309,29 @@ class CBAC():
         elif type == e:
             message = "[-] - " + message
         
-        pass
+        try:
+            subprocess.run(["sudo", "wall", message])
+        except:
+            pass
 
 
 
     # Thread for the current ssh session, informative messages and eventually termination of the process
     def handle_session(self, user: str, time_left: timedelta):
         print("Waiting time left of reservation...")
-        secs_left = time_left.total_seconds()
+        time.sleep(time_left.total_seconds())
         
-        if secs_left < 300:
-            self.message_user(user, "Less than 5 minutes remaning before session is terminated automatically", i)
-            time.sleep(secs_left)
-        else:
-            time.sleep(secs_left - 300)
-            self.message_user(user, "5 minutes remaining for session to be terminated automatically", i)
-            time.sleep(300)
-            
-        self.message_user(user, "Session ended, forcefully terminating process...", e)
-        print("Killing ssh process of user")
-        os.system(f"pkill -u {user} -f sshd")
+        list_sessions = subprocess.check_output(["sudo", "loginctl", "list-sessions"]).decode()
+        sessions = []
+
+        for line in list_sessions.splitlines()[1:]:
+            info = line.split()
+            if len(info) >= 3 and info[2] == user:
+                sessions.append(info[0])
+
+        for session in sessions:
+            self.message_sessions(user, "Session terminated...", i)
+            subprocess.run(["sudo", "loginctl", "kill-session", session])
 
 
     # Main loop
