@@ -3,7 +3,7 @@
 // Implementation of auxiliary functions for CBAC
 
 
-#include "include/pam_cbac_func.h"
+#include "cbac_client.h"
 
 #include <stdio.h>
 #include <stdlib.h>

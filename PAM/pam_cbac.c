@@ -18,7 +18,7 @@
 #include <arpa/inet.h>
 #include <time.h>
 
-#include "include/pam_cbac_func.h"
+#include "cbac_client/cbac_client.h"
 
 
 PAM_EXTERN int
