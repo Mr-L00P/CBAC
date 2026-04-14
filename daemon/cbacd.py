@@ -165,7 +165,23 @@ class CBAC():
 
     # Function to delete the events on the calendar with a given time, logs the event and user of the deleted events
     def format_calendar(self, when_dt: datetime):
-        pass
+        calendar_id = self.get_or_create_calendar()
+        event_list = self.get_events(when_dt)
+
+        unformatted_list = []
+
+        for event in event_list:
+            start_dt = self.parse_timestamp(event["startime"].get("dateTime"))
+            end_dt = self.parse_timestamp(event["end".get("dateTime")])
+
+            if (end_dt - start_dt) < timedelta(minutes=os.getenv("MAX_TIME")):
+                unformatted_list.append(event)
+
+        for event in unformatted_list:
+            self.service.events().delete(
+                calendarId = calendar_id,
+                eventId = event["id"]
+            ).execute()
 
 
 
@@ -302,13 +318,8 @@ class CBAC():
 
 
     def parse_timestamp(self, when: str):
-        try:
-            dt = datetime.fromisoformat(when)
-            if dt.tzinfo != timezone.utc:
-                raise ValueError("Timezone no permitida")
-            return dt
-        except ValueError:
-            return None
+        dt = datetime.fromisoformat(when)
+        return dt
 
 
 
