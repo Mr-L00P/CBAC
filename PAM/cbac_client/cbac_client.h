@@ -27,12 +27,13 @@ struct pam_cbac_packet_t {
 // Message codes
 #define CBAC_CHECK_SUCCESS  0  // User exists and has a reservation                      Message set to end of reservation time
 #define CBAC_USER_CREATED   1  // User has been created correctly                        Message set to user's email address
-#define CBAC_RESERV_CREATED 2  // Reservation has been created for user                  Message set to user, when, time interval, separated by spaces
-#define CBAC_WRONG_USER     3  // No reservation, occupied space                         Message empty
-#define CBAC_EMPTY_SPACE    4  // No reservation but empty space                         Message empty
-#define CBAC_API_ERROR      5  // Daemon couldn't process request with Google API        Message set to origin of the error
-#define CBAC_PARAM_ERROR    6  // Params given to daemon not valid                       Message set to origin of the error
-#define CBAC_OCCUPIED       7  // Time supplied overlaps with event in the calendar      Message informative
+#define CBAC_USER_DELETED   2  // User has been deleted correctly                        Message empty
+#define CBAC_RESERV_CREATED 3  // Reservation has been created for user                  Message set to user, when, time interval, separated by spaces
+#define CBAC_WRONG_USER     4  // No reservation, occupied space                         Message empty
+#define CBAC_EMPTY_SPACE    5  // No reservation but empty space                         Message empty
+#define CBAC_API_ERROR      6  // Daemon couldn't process request with Google API        Message set to origin of the error
+#define CBAC_PARAM_ERROR    7  // Params given to daemon not valid                       Message set to origin of the error
+#define CBAC_OCCUPIED       8  // Time supplied overlaps with event in the calendar      Message informative
 
 #define CBAC_CHECK_RESERV   10 // Asks daemon to check if user can go through.           Message set to username to check
 #define CBAC_MAKE_RESERV    11 // Asks daemon to make a reservation from now             Message set to time interval desired

@@ -36,12 +36,13 @@ PACKET_SIZE = 4 + PACKET_MESSAGE_SIZE
 # Packet response codes
 CBAC_CHECK_SUCCESS  = 0  # User exists and has a reservation                          Message set to end of reservation time
 CBAC_USER_CREATED   = 1  # User has been created correctly                            Message set to user's email address
-CBAC_RESERV_CREATED = 2  # Reservation has been created for user                      Message empty
-CBAC_WRONG_USER     = 3  # No reservation, occupied space                             Message empty
-CBAC_EMPTY_SPACE    = 4  # No reservation but empty space                             Message empty
-CBAC_API_ERROR      = 5  # Daemon couldn't process request with Google API            Message set to origin of the error
-CBAC_PARAM_ERROR    = 6  # Params given to daemon not valid                           Message set to origin of the error
-CBAC_OCCUPIED       = 7  # Time supplied overlaps with event in the calendar          Message informative
+CBAC_USER_DELETED   = 2  # User has been deleted correctly                            Message set to user's email address
+CBAC_RESERV_CREATED = 3  # Reservation has been created for user                      Message empty
+CBAC_WRONG_USER     = 4  # No reservation, occupied space                             Message empty
+CBAC_EMPTY_SPACE    = 5  # No reservation but empty space                             Message empty
+CBAC_API_ERROR      = 6  # Daemon couldn't process request with Google API            Message set to origin of the error
+CBAC_PARAM_ERROR    = 7  # Params given to daemon not valid                           Message set to origin of the error
+CBAC_OCCUPIED       = 8  # Time supplied overlaps with event in the calendar          Message informative
 
 # Packet request codes
 CBAC_CHECK_RESERV   = 10 # Asks daemon to check if user can go through.               Message set to username to check
@@ -65,14 +66,6 @@ e = 2
 
 class CBAC():
     def __init__(self):
-        self.stdin_path = '/dev/null'
-        self.stdout_path = '/var/log/cbac.log'
-        self.stderr_path = '/var/log/cbac.err'
-        self.pidfile_path =  '/tmp/cbacd.pid'
-        self.pidfile_timeout = 5
-
-        # init variables with conf file in /etc/cbac/cbac.conf
-
         # init socket
         if os.path.exists(SOCKET_PATH):
             os.remove(SOCKET_PATH)
@@ -149,13 +142,13 @@ class CBAC():
 
 
     # Returns a list of event objects from the API within a time frame from a given datetime
-    def get_events(self, when_dt: datetime):
+    def get_events(self, when_dt: datetime, offset=120):
         calendar_id = self.get_or_create_calendar()
 
         events = self.service.events().list(
             calendarId=calendar_id,
-            timeMin=(when_dt - timedelta(hours=2)).isoformat(),
-            timeMax=(when_dt + timedelta(hours=2)).isoformat(),
+            timeMin=(when_dt - timedelta(minutes=offset)).isoformat(),
+            timeMax=(when_dt + timedelta(minutes=offset)).isoformat(),
             maxResults=10,
             singleEvents=True,
             orderBy='startTime'
@@ -173,6 +166,7 @@ class CBAC():
     # Function to delete the events on the calendar with a given time, logs the event and user of the deleted events
     def format_calendar(self, when_dt: datetime):
         pass
+
 
 
     # Creates and returns the packet with a given code and message
@@ -222,7 +216,7 @@ class CBAC():
 
 
     # Attempts to add user to the calendar and returns the status struct to send back to the client  
-    def add_user_to_calendar(self, user_email: str, role: str):
+    def add_user_to_calendar(self, user_email: str, role: str) -> struct:
         calendar_id = self.get_or_create_calendar()
 
         if not user_email.endswith("@gmail.com"):
@@ -244,6 +238,25 @@ class CBAC():
         return self.create_packet(CBAC_USER_CREATED, user_email)
 
     
+
+    def remove_user_from_calendar(self, user_email: str) -> struct:
+        calendar_id = self.get_or_create_calendar()
+
+        if not user_email.endswith("@gmail.com"):
+            return self.create_packet(CBAC_PARAM_ERROR, "User address not valid")
+
+        try:
+            self.service.acl().delete(
+                calendarId=calendar_id,
+                ruleId=user_email
+            ).execute()
+
+            return self.create_packet(CBAC_USER_DELETED, user_email)
+
+        except Exception as e:
+            return self.create_packet(CBAC_API_ERROR, "Couldn't remove user from calendar")
+
+
 
     # Checks if the current event on the calendar matches the user supplied
     def check_reserv(self, user: str) -> struct:
@@ -319,7 +332,16 @@ class CBAC():
     # Thread for the current ssh session, informative messages and eventually termination of the process
     def handle_session(self, user: str, time_left: timedelta):
         print("Waiting time left of reservation...")
-        time.sleep(time_left.total_seconds())
+        seconds_left = time_left.total_seconds()
+
+        if seconds_left > 300:
+            seconds_left -= 300
+            time.sleep(seconds_left)
+            self.message_sessions(user, "5 minutes left in session", i)
+            time.sleep(300)
+        else:
+            self.message_sessions(user, f"{int(seconds_left)} seconds left in session", i)
+            time.sleep(time_left.total_seconds())
         
         list_sessions = subprocess.check_output(["sudo", "loginctl", "list-sessions"]).decode()
         sessions = []
