@@ -39,6 +39,11 @@ int delreserv() {
 }
 
 
+int config() {
+    
+}
+
+
 int main(int argc, char *argv[]) {
     
     if (argc < 3) {
@@ -63,7 +68,10 @@ int main(int argc, char *argv[]) {
     }
     else if (strcmp(argv[2], "delreserv")) {
 
-    } 
+    }
+    else if (strcmp(argv[2], "config")) {
+
+    }
     else {
         print_help();
     }
