@@ -1,5 +1,5 @@
 
-// pam_cbac_func.h 
+// cbac_client.h 
 // Definitions and declarations for CBAC
 
 
@@ -13,14 +13,14 @@
 
 
 // Settings
-#define PAM_CBAC_MSG_SIZE 128
+#define CBAC_MSG_SIZE 128
 #define SOCKET_PATH "/run/cbacd/cbac.sock"
 
 
 // Packet structure
 struct pam_cbac_packet_t {
     int32_t code;
-    char message[PAM_CBAC_MSG_SIZE];
+    char message[CBAC_MSG_SIZE];
 };
 
 
@@ -38,6 +38,7 @@ struct pam_cbac_packet_t {
 #define CBAC_CHECK_RESERV   10 // Asks daemon to check if user can go through.           Message set to username to check
 #define CBAC_MAKE_RESERV    11 // Asks daemon to make a reservation from now             Message set to time interval desired
 #define CBAC_ADD_USER       12 // Asks daemon to add user to the calendar of the system  Message set to user's email address
+#define CBAC_DEL_USER       13 // Asks daemon to delete user from the calendar           Message set to user's email address
 
 
 // Info conv macros for PAM

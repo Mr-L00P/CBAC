@@ -1,5 +1,5 @@
 
-// pam_cbac_func.c
+// cbac_client.c
 // Implementation of auxiliary functions for CBAC
 
 
@@ -33,8 +33,8 @@ int cbac_connect(int sockfd, struct sockaddr_un *addr) {
 
 int cbac_create_packet(struct pam_cbac_packet_t *packet, int code, const char *message) {
     packet->code = htonl(code);
-    memset(packet->message, 0, PAM_CBAC_MSG_SIZE);
-    snprintf(packet->message, PAM_CBAC_MSG_SIZE, "%s", message);
+    memset(packet->message, 0, CBAC_MSG_SIZE);
+    snprintf(packet->message, CBAC_MSG_SIZE, "%s", message);
     if (packet->message == NULL) {
         packet->message[0] = '\0';
         return -1;

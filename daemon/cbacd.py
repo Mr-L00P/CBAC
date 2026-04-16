@@ -48,7 +48,7 @@ CBAC_OCCUPIED       = 8  # Time supplied overlaps with event in the calendar    
 CBAC_CHECK_RESERV   = 10 # Asks daemon to check if user can go through.               Message set to username to check
 CBAC_MAKE_RESERV    = 11 # Asks daemon to make a reservation from now                 Message set to user, when, time interval, separated by spaces
 CBAC_ADD_USER       = 12 # Asks daemon to add user to the calendar of the system.     Message set to user's email address and role, separated by space
-
+CBAC_DEL_USER       = 13 # Asks daemon to delete user from the calendar               Message set to user's email address
 
 
 SCOPES=["https://www.googleapis.com/auth/calendar"]
@@ -164,9 +164,9 @@ class CBAC():
 
 
     # Function to delete the events on the calendar with a given time, logs the event and user of the deleted events
-    def format_calendar(self, when_dt: datetime):
+    def fix_events(self, when_dt: datetime):
         calendar_id = self.get_or_create_calendar()
-        event_list = self.get_events(when_dt)
+        event_list = self.get_events(when_dt, offset=(os.getenv("MAX_EVENT_MINUTES") * 2))
 
         unformatted_list = []
 
@@ -174,7 +174,7 @@ class CBAC():
             start_dt = self.parse_timestamp(event["startime"].get("dateTime"))
             end_dt = self.parse_timestamp(event["end".get("dateTime")])
 
-            if (end_dt - start_dt) < timedelta(minutes=os.getenv("MAX_TIME")):
+            if (end_dt - start_dt) < timedelta(minutes=os.getenv("MAX_RESERV_MINUTES")):
                 unformatted_list.append(event)
 
         for event in unformatted_list:
@@ -202,7 +202,7 @@ class CBAC():
         if not offset.isdigit():
             return self.create_packet(CBAC_PARAM_ERROR, "Time interval not valid")
 
-        if int(offset) > int(os.getenv("MAX_TIME")):
+        if int(offset) > int(os.getenv("MAX_RESERV_MINUTES")):
             return self.create_packet(CBAC_PARAM_ERROR, "Requested more than the max time")
 
         end_dt = start_dt + timedelta(minutes=int(offset))
@@ -255,7 +255,7 @@ class CBAC():
 
     
 
-    def remove_user_from_calendar(self, user_email: str) -> struct:
+    def del_user_from_calendar(self, user_email: str) -> struct:
         calendar_id = self.get_or_create_calendar()
 
         if not user_email.endswith("@gmail.com"):
@@ -311,7 +311,10 @@ class CBAC():
             data_send = self.make_reserv(user, when, time)
         elif code_recv == CBAC_ADD_USER:
             user_email, role = message_recv.split()
-            data_send = self.add_user(user_email, role)
+            data_send = self.add_user_to_calendar(user_email, role)
+        elif code_recv == CBAC_DEL_USER:
+            user_email = message_recv
+            data_send = self.del_user_from_calendar(user_email)
 
         return data_send
 
@@ -337,6 +340,15 @@ class CBAC():
             subprocess.run(["sudo", "wall", message])
         except:
             pass
+
+
+    
+    # Thread for fixing events every EVENT_FIX_MINUTES time, defined in .env
+    def fix_event_loop(self):
+        secs = os.getenv("EVENT_FIX_MINUTES") * 60
+        while(True):
+            self.fix_events(datetime.now())
+            time.sleep(secs)
 
 
 
@@ -371,6 +383,9 @@ class CBAC():
 
     def run(self):
         data_recv = None
+
+        event_fix_thread = threading.Thread(target=self.fix_event_loop)
+        event_fix_thread.start()
 
         while True:
             print("Inside run loop\n")

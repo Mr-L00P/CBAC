@@ -122,7 +122,7 @@ pam_sm_acct_mgmt(pam_handle_t *pamh, int flags,
         if (strcmp(response, "yes") == 0) {
             free(response);
             response = NULL;
-            char msg[PAM_CBAC_MSG_SIZE];
+            char msg[CBAC_MSG_SIZE];
             int minutes;
 
             if (pam_prompt(pamh, PAM_PROMPT_ECHO_ON, &response, "Input the number of minutes you want for your reservation: ") != PAM_SUCCESS) {
