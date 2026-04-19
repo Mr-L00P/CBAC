@@ -25,20 +25,24 @@ struct pam_cbac_packet_t {
 
 
 // Message codes
-#define CBAC_CHECK_SUCCESS  0  // User exists and has a reservation                      Message set to end of reservation time
-#define CBAC_USER_CREATED   1  // User has been created correctly                        Message set to user's email address
-#define CBAC_USER_DELETED   2  // User has been deleted correctly                        Message empty
-#define CBAC_RESERV_CREATED 3  // Reservation has been created for user                  Message set to user, when, time interval, separated by spaces
-#define CBAC_WRONG_USER     4  // No reservation, occupied space                         Message empty
-#define CBAC_EMPTY_SPACE    5  // No reservation but empty space                         Message empty
-#define CBAC_API_ERROR      6  // Daemon couldn't process request with Google API        Message set to origin of the error
-#define CBAC_PARAM_ERROR    7  // Params given to daemon not valid                       Message set to origin of the error
-#define CBAC_OCCUPIED       8  // Time supplied overlaps with event in the calendar      Message informative
+#define CBAC_OK             0  // General success flag                                   Message empty
+#define CBAC_CHECK_SUCCESS  1  // User exists and has a reservation                      Message set to end of reservation time
+#define CBAC_USER_CREATED   2  // User has been created correctly                        Message set to user's email address
+#define CBAC_USER_DELETED   3  // User has been deleted correctly                        Message empty
+#define CBAC_RESERV_CREATED 4  // Reservation has been created for user                  Message set to user, when, time interval, separated by spaces
+#define CBAC_WRONG_USER     5  // No reservation, occupied space                         Message empty
+#define CBAC_EMPTY_SPACE    6  // No reservation but empty space                         Message empty
+#define CBAC_API_ERROR      7  // Daemon couldn't process request with Google API        Message set to origin of the error
+#define CBAC_PARAM_ERROR    8  // Params given to daemon not valid                       Message set to origin of the error
+#define CBAC_OCCUPIED       9  // Time supplied overlaps with event in the calendar      Message informative
 
-#define CBAC_CHECK_RESERV   10 // Asks daemon to check if user can go through.           Message set to username to check
-#define CBAC_MAKE_RESERV    11 // Asks daemon to make a reservation from now             Message set to time interval desired
-#define CBAC_ADD_USER       12 // Asks daemon to add user to the calendar of the system  Message set to user's email address
-#define CBAC_DEL_USER       13 // Asks daemon to delete user from the calendar           Message set to user's email address
+// Packet request codes
+#define CBAC_CHECK_RESERV   10 // Asks daemon to check if user can go through.               Message set to username to check
+#define CBAC_MAKE_RESERV    11 // Asks daemon to make a reservation from now                 Message set to user, when, time interval, separated by spaces
+#define CBAC_DEL_RESERV     12 // Asks daemon to delete a certain event                      Message set to timestamp intersecting with the event
+#define CBAC_ADD_USER       13 // Asks daemon to add user to the calendar of the system.     Message set to user's email address and role, separated by space
+#define CBAC_DEL_USER       14 // Asks daemon to delete user from the calendar               Message set to user's email address
+#define CBAC_UPDATE_CONF    15 // Asks daemon to update env variables                        Message empty
 
 
 // Info conv macros for PAM

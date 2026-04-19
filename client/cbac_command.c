@@ -12,6 +12,9 @@
 #include <stdarg.h>
 #include <string.h>
 #include <sys/types.h>
+#include <sys/socket.h>
+#include <sys/un.h>
+
 
 
 void print_help() {
@@ -19,61 +22,85 @@ void print_help() {
 }
 
 
-int adduser(const char* user) {
-
-}
-
-
-int deluser(const char* user) {
-
-}
-
-
-int addreserv() {
-
-}
-
-
-int delreserv() {
-
-}
-
-
-int config() {
-    
-}
-
 
 int main(int argc, char *argv[]) {
-    
-    if (argc < 3) {
-        print_help();
-    }
+
+    int sock;
+    struct sockaddr_un addr;
+    struct pam_cbac_packet_t data_send;
+    struct pam_cbac_packet_t data_recv;
 
     int code;
-    char message[CBAC_MSG_SIZE];
+    const char *message = NULL;
+    char buffer[CBAC_MSG_SIZE];
 
 
-    if        (strcmp(argv[2], "help")) {
-        print_help();
-    } 
-    else if (strcmp(argv[2], "adduser")) {
 
-    }
-    else if (strcmp(argv[2], "deluser")) {
+    if (argc == 2) {
 
-    }
-    else if (strcmp(argv[2], "addreserv")) {
+        if (strcmp(argv[1], "help")) {
+            print_help();
+            return 0;
+        }
 
     }
-    else if (strcmp(argv[2], "delreserv")) {
+    else if (argc == 3) {
+
+        if (strcmp(argv[1], "adduser")) {
+            code = CBAC_ADD_USER;
+
+        }
+        else if (strcmp(argv[1], "deluser")) {
+            code = CBAC_DEL_USER;
+
+        }
+        else if (strcmp(argv[1], "addreserv")) {
+            code = CBAC_MAKE_RESERV;
+
+        }
+        else if (strcmp(argv[1], "delreserv")) {
+            code = CBAC_DEL_RESERV;
+
+        }
 
     }
-    else if (strcmp(argv[2], "config")) {
+    else if (argc == 4) {
+
+        if (strcmp(argv[1], "config")) {
+            code = CBAC_UPDATE_CONF;
+            
+        }
 
     }
     else {
+
         print_help();
+        return 0;
+
+    }
+
+
+    message = buffer;
+    cbac_create_packet(&data_send, code, message);
+
+    sock = socket(AF_UNIX, SOCK_SEQPACKET, 0);
+    if (sock < 0) {
+        return -1;
+    }
+
+    if (cbac_connect(sock, &addr) < 0) {
+        close(sock);
+        return -1;
+    }
+
+    if (cbac_send_packet(sock, &data_send) < 0) {
+        close(sock);
+        return -1;
+    }
+
+    if (cbac_recv_packet(sock, &data_recv) < 0) {
+        close(sock);
+        return -1;
     }
 
 

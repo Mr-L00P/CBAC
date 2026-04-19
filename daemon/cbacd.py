@@ -22,7 +22,7 @@ from zoneinfo import ZoneInfo
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 from dotenv import load_dotenv
-load_dotenv() 
+load_dotenv()
 
 # from daemon import runner
 
@@ -34,21 +34,24 @@ PACKET_SIZE = 4 + PACKET_MESSAGE_SIZE
 
 
 # Packet response codes
-CBAC_CHECK_SUCCESS  = 0  # User exists and has a reservation                          Message set to end of reservation time
-CBAC_USER_CREATED   = 1  # User has been created correctly                            Message set to user's email address
-CBAC_USER_DELETED   = 2  # User has been deleted correctly                            Message set to user's email address
-CBAC_RESERV_CREATED = 3  # Reservation has been created for user                      Message empty
-CBAC_WRONG_USER     = 4  # No reservation, occupied space                             Message empty
-CBAC_EMPTY_SPACE    = 5  # No reservation but empty space                             Message empty
-CBAC_API_ERROR      = 6  # Daemon couldn't process request with Google API            Message set to origin of the error
-CBAC_PARAM_ERROR    = 7  # Params given to daemon not valid                           Message set to origin of the error
-CBAC_OCCUPIED       = 8  # Time supplied overlaps with event in the calendar          Message informative
+CBAC_OK             = 0  # General success flag                                       Message empty
+CBAC_CHECK_SUCCESS  = 1  # User exists and has a reservation                          Message set to end of reservation time
+CBAC_USER_CREATED   = 2  # User has been created correctly                            Message set to user's email address
+CBAC_USER_DELETED   = 3  # User has been deleted correctly                            Message set to user's email address
+CBAC_RESERV_CREATED = 4  # Reservation has been created for user                      Message empty
+CBAC_WRONG_USER     = 5  # No reservation, occupied space                             Message empty
+CBAC_EMPTY_SPACE    = 6  # No reservation but empty space                             Message empty
+CBAC_API_ERROR      = 7  # Daemon couldn't process request with Google API            Message set to origin of the error
+CBAC_PARAM_ERROR    = 8  # Params given to daemon not valid                           Message set to origin of the error
+CBAC_OCCUPIED       = 9  # Time supplied overlaps with event in the calendar          Message informative
 
 # Packet request codes
 CBAC_CHECK_RESERV   = 10 # Asks daemon to check if user can go through.               Message set to username to check
 CBAC_MAKE_RESERV    = 11 # Asks daemon to make a reservation from now                 Message set to user, when, time interval, separated by spaces
-CBAC_ADD_USER       = 12 # Asks daemon to add user to the calendar of the system.     Message set to user's email address and role, separated by space
-CBAC_DEL_USER       = 13 # Asks daemon to delete user from the calendar               Message set to user's email address
+CBAC_DEL_RESERV     = 12 # Asks daemon to delete a certain event                      Message set to timestamp intersecting with the event
+CBAC_ADD_USER       = 13 # Asks daemon to add user to the calendar of the system.     Message set to user's email address and role, separated by space
+CBAC_DEL_USER       = 14 # Asks daemon to delete user from the calendar               Message set to user's email address
+CBAC_UPDATE_CONF    = 15 # Asks daemon to update env variables                        Message empty
 
 
 SCOPES=["https://www.googleapis.com/auth/calendar"]
@@ -186,7 +189,7 @@ class CBAC():
 
 
     # Creates and returns the packet with a given code and message
-    def create_packet(self, code: str, message: str) -> struct:
+    def create_packet(self, code: int, message: str) -> struct:
         return struct.pack(f"!i{PACKET_MESSAGE_SIZE}s", code, message.encode())
 
 
@@ -228,6 +231,23 @@ class CBAC():
             return self.create_packet(CBAC_RESERV_CREATED, "")
         else:
             return self.create_packet(CBAC_OCCUPIED, "Time occupied on calendar")
+
+
+
+    # Attempts to delete an event from the calendar with a given time
+    def del_reserv(self, when: str):
+        calendar_id = self.get_or_create_calendar()
+        when_dt = self.parse_timestamp(when)
+        events = self.get_events(when_dt, 0)
+
+        if not events:
+            return self.create_packet(CBAC_PARAM_ERROR, "No event in timestamp given")
+        
+        for event in events:
+            self.service.events().delete(
+                calendarId=calendar_id,
+                eventId = event["id"]
+            ).execute()
 
 
 
@@ -293,6 +313,13 @@ class CBAC():
                 return self.create_packet(CBAC_WRONG_USER, event["end"].get("dateTime"))
 
         return self.create_packet(CBAC_WRONG_USER, "")
+    
+
+
+    # Updates env variables when asked by client
+    def update_conf(self) -> struct:
+        load_dotenv(override=True)
+        return self.create_packet(CBAC_OK, "")
 
 
 
@@ -315,6 +342,9 @@ class CBAC():
         elif code_recv == CBAC_DEL_USER:
             user_email = message_recv
             data_send = self.del_user_from_calendar(user_email)
+        elif code_recv == CBAC_DEL_RESERV:
+            when = message_recv
+            data_send = self.del_reserv(when)
 
         return data_send
 
