@@ -27,8 +27,8 @@ int main(int argc, char *argv[]) {
 
     int sock;
     struct sockaddr_un addr;
-    struct pam_cbac_packet_t data_send;
-    struct pam_cbac_packet_t data_recv;
+    struct cbac_packet_t data_send;
+    struct cbac_packet_t data_recv;
 
     int code;
     const char *message = NULL;

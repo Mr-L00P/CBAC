@@ -21,6 +21,10 @@
 #include <security/pam_modules.h>
 
 
+int cbac_socket() {
+    return socket(AF_UNIX, SOCK_SEQPACKET, 0);
+}
+
 int cbac_connect(int sockfd, struct sockaddr_un *addr) {
     memset(addr, 0, sizeof(struct sockaddr_un));
     addr->sun_family = AF_UNIX;
@@ -31,7 +35,7 @@ int cbac_connect(int sockfd, struct sockaddr_un *addr) {
     return 0;
 }
 
-int cbac_create_packet(struct pam_cbac_packet_t *packet, int code, const char *message) {
+int cbac_create_packet(struct cbac_packet_t *packet, int code, const char *message) {
     packet->code = htonl(code);
     memset(packet->message, 0, CBAC_MSG_SIZE);
     snprintf(packet->message, CBAC_MSG_SIZE, "%s", message);
@@ -42,16 +46,24 @@ int cbac_create_packet(struct pam_cbac_packet_t *packet, int code, const char *m
     return 0;
 }
 
-int cbac_send_packet(int sockfd, const struct pam_cbac_packet_t *packet) {
-    if (send(sockfd, packet, sizeof(struct pam_cbac_packet_t), 0) < 0) {
+int cbac_send_packet(int sockfd, const struct cbac_packet_t *packet) {
+    if (send(sockfd, packet, sizeof(struct cbac_packet_t), 0) < 0) {
         return -1;
     }
     return 0;
 }
 
-int cbac_recv_packet(int sockfd, struct pam_cbac_packet_t *packet) {
+int cbac_recv_packet(int sockfd, struct cbac_packet_t *packet) {
     if (recv(sockfd, packet, sizeof(*packet), 0) < 0) {
         return -1;
     }
     return 0;
+}
+
+int cbac_get_packet_code(struct cbac_packet_t *packet) {
+    return ntohl(packet->code);
+}
+
+char *cbac_get_packet_message(struct cbac_packet_t *packet) {
+    return packet->message;
 }

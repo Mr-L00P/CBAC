@@ -22,7 +22,7 @@ from zoneinfo import ZoneInfo
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 from dotenv import load_dotenv
-load_dotenv()
+load_dotenv("/etc/cbac/config")
 
 # from daemon import runner
 
@@ -169,7 +169,7 @@ class CBAC():
     # Function to delete the events on the calendar with a given time, logs the event and user of the deleted events
     def fix_events(self, when_dt: datetime):
         calendar_id = self.get_or_create_calendar()
-        event_list = self.get_events(when_dt, offset=(os.getenv("MAX_EVENT_MINUTES") * 2))
+        event_list = self.get_events(when_dt, offset=(os.getenv("MAX_EVENT_MINUTES") * 10))
 
         unformatted_list = []
 
@@ -318,7 +318,7 @@ class CBAC():
 
     # Updates env variables when asked by client
     def update_conf(self) -> struct:
-        load_dotenv(override=True)
+        load_dotenv("/etc/cbac/config", override=True)
         return self.create_packet(CBAC_OK, "")
 
 

@@ -8,8 +8,13 @@
 
 #include <stdint.h>
 #include <sys/un.h>
+#include <sys/types.h>
 #include <security/pam_appl.h>
 #include <security/pam_modules.h>
+
+
+// Types
+#define CBAC_SOCKADDR struct sockaddr_un
 
 
 // Settings
@@ -18,7 +23,7 @@
 
 
 // Packet structure
-struct pam_cbac_packet_t {
+struct cbac_packet_t {
     int32_t code;
     char message[CBAC_MSG_SIZE];
 };
@@ -46,16 +51,27 @@ struct pam_cbac_packet_t {
 
 
 // Info conv macros for PAM
-#define CBAC_OKAY(pamh, msg, ...) pam_info(pamh, "\n[+] - " msg "\n", ##__VA_ARGS__)
-#define CBAC_INFO(pamh, msg, ...) pam_info(pamh, "\n[*] - " msg "\n", ##__VA_ARGS__)
-#define CBAC_WARN(pamh, msg, ...) pam_info(pamh, "\n[-] - " msg "\n", ##__VA_ARGS__)
+#define PAM_CBAC_OKAY(pamh, msg, ...) pam_info(pamh, "\n[+] - " msg "\n", ##__VA_ARGS__)
+#define PAM_CBAC_INFO(pamh, msg, ...) pam_info(pamh, "\n[*] - " msg "\n", ##__VA_ARGS__)
+#define PAM_CBAC_WARN(pamh, msg, ...) pam_info(pamh, "\n[-] - " msg "\n", ##__VA_ARGS__)
+
+// Info conv macros for terminal
+#define CBAC_OKAY(msg, ...) printf("\n[+] - " msg "\n", ##__VA_ARGS__)
+#define CBAC_INFO(msg, ...) printf("\n[*] - " msg "\n", ##__VA_ARGS__)
+#define CBAC_WARN(msg, ...) printf("\n[-] - " msg "\n", ##__VA_ARGS__)
 
 
-// CBAC Packet struct functions
-int cbac_connect(int sockfd, struct sockaddr_un *addr);
-int cbac_create_packet(struct pam_cbac_packet_t *packet, int code, const char *message);
-int cbac_send_packet(int sockfd, const struct pam_cbac_packet_t *packet);
-int cbac_recv_packet(int sockfd, struct pam_cbac_packet_t *packet);
+// Functions
+int cbac_socket();
+int cbac_connect(int sockfd, CBAC_SOCKADDR *addr);
+int cbac_create_packet(struct cbac_packet_t *packet, int code, const char *message);
+int cbac_send_packet(int sockfd, const struct cbac_packet_t *packet);
+int cbac_recv_packet(int sockfd, struct cbac_packet_t *packet);
+
+
+int cbac_get_packet_code(struct cbac_packet_t *packet);
+char* cbac_get_packet_message(struct cbac_packet_t *packet);
+
 
 
 #endif
