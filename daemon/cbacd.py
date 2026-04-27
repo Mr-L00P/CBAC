@@ -17,14 +17,13 @@ import sys
 import configparser
 import threading
 from datetime import datetime, timezone, timedelta
+from dateutil import parser
 from zoneinfo import ZoneInfo
 
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 from dotenv import load_dotenv
 load_dotenv("/etc/cbac/config")
-
-# from daemon import runner
 
 
 # Settings
@@ -55,7 +54,6 @@ CBAC_UPDATE_CONF    = 15 # Asks daemon to update env variables                  
 
 
 SCOPES=["https://www.googleapis.com/auth/calendar"]
-CALENDAR_NAME="CBAC Calendar"
 CALENDAR_ID=os.getenv("CALENDAR_ID")
 
 
@@ -94,13 +92,13 @@ class CBAC():
 
         calendar_list = self.service.calendarList().list().execute()
         for cal in calendar_list.get("items", []):
-            if cal["summary"] == CALENDAR_NAME:
+            if cal["summary"] == os.getenv("CALENDAR_NAME"):
                 CALENDAR_ID = cal["id"]
                 return CALENDAR_ID
             
         calendar = {
-            "summary": CALENDAR_NAME,
-            "timeZone": f"{os.getenv("TIMEZONE")}"
+            "summary": os.getenv("CALENDAR_NAME"),
+            "timeZone": os.getenv("TIMEZONE")
         }
         created = self.service.calendars().insert(body=calendar).execute()
         CALENDAR_ID = created["id"]
@@ -134,8 +132,8 @@ class CBAC():
             if not start_str or not end_str:
                 return CBAC_API_ERROR, None
                 
-            start_dt = datetime.fromisoformat(start_str)
-            end_dt = datetime.fromisoformat(end_str)
+            start_dt = self.parse_timestamp(start_str)
+            end_dt = self.parse_timestamp(end_str)
 
             if when_dt <= end_dt and start_dt <= when_end:
                 return CBAC_OCCUPIED, event
@@ -169,23 +167,39 @@ class CBAC():
     # Function to delete the events on the calendar with a given time, logs the event and user of the deleted events
     def fix_events(self, when_dt: datetime):
         calendar_id = self.get_or_create_calendar()
-        event_list = self.get_events(when_dt, offset=(os.getenv("MAX_EVENT_MINUTES") * 10))
+        event_list = self.get_events(when_dt, offset=0)
 
-        unformatted_list = []
+        valid_event_set = set()
+        unformatted_event_set = set()
+
+        first_event_id = None
+        first_event_dt = None
 
         for event in event_list:
             start_dt = self.parse_timestamp(event["startime"].get("dateTime"))
             end_dt = self.parse_timestamp(event["end".get("dateTime")])
 
-            if (end_dt - start_dt) < timedelta(minutes=os.getenv("MAX_RESERV_MINUTES")):
-                unformatted_list.append(event)
+            if (end_dt - start_dt) < timedelta(minutes=int(os.getenv("MAX_RESERV_MINUTES"))) and (end_dt - start_dt) < timedelta(minutes=int(os.getenv("MIN_RESERV_MINUTES"))):
+                valid_event_set.add(event["id"])
+                if first_event_dt is None or self.parse_timestamp(["created"]) < first_event_dt:
+                    first_event_dt = self.parse_timestamp(event["created"])
+                    first_event_id = event["id"] 
+            else:
+                unformatted_event_set.add(event["id"])
 
-        for event in unformatted_list:
+        for event in unformatted_event_set:
             self.service.events().delete(
                 calendarId = calendar_id,
                 eventId = event["id"]
             ).execute()
 
+        if (os.getenv("ALLOW_INTERSECT") == "False"):
+            for event in valid_event_set:
+                if event["id"] != first_event_id:
+                    self.service.events().delete(
+                        calendarId = calendar_id,
+                        eventId = event["id"]
+                    ).execute()
 
 
     # Creates and returns the packet with a given code and message
@@ -296,7 +310,7 @@ class CBAC():
 
     # Checks if the current event on the calendar matches the user supplied
     def check_reserv(self, user: str) -> struct:
-        now_dt = datetime.now(ZoneInfo(os.getenv("TIMEZONE")))
+        now_dt = datetime.now()
         now = datetime.isoformat(now_dt)
 
         curr_events = self.get_events(now_dt)
@@ -345,13 +359,15 @@ class CBAC():
         elif code_recv == CBAC_DEL_RESERV:
             when = message_recv
             data_send = self.del_reserv(when)
+        elif code_recv == CBAC_UPDATE_CONF:
+            data_send = self.update_conf()
 
         return data_send
 
 
 
     def parse_timestamp(self, when: str):
-        dt = datetime.fromisoformat(when)
+        dt = parser.parse(when)
         return dt
 
 
@@ -375,9 +391,11 @@ class CBAC():
     
     # Thread for fixing events every EVENT_FIX_MINUTES time, defined in .env
     def fix_event_loop(self):
-        secs = os.getenv("EVENT_FIX_MINUTES") * 60
+        secs = int(os.getenv("EVENT_FIX_MINUTES")) * 60
+        now_dt = datetime.now() 
         while(True):
-            self.fix_events(datetime.now())
+            for i in range(10):
+                self.fix_events(now_dt + timedelta(minutes=(i * 5)))
             time.sleep(secs)
 
 
@@ -418,38 +436,27 @@ class CBAC():
         event_fix_thread.start()
 
         while True:
-            print("Inside run loop\n")
             conn, _ = self.server.accept()
             while True:
                 data_recv = conn.recv(PACKET_SIZE)
 
                 if not data_recv:
-                    print("Client disconnected")
                     break
-
-                print("Data received")
 
                 code_recv, message_recv = struct.unpack(f'!i{PACKET_MESSAGE_SIZE}s', data_recv)
                 message_recv = message_recv.rstrip(b'\x00').decode('utf-8')
 
-                print(f"Code: {code_recv}")
-                print(f"Message: {message_recv}\n")
-
                 data_send = self.treat_packet(data_recv)
+
                 code_send, message_send = struct.unpack(f'!i{PACKET_MESSAGE_SIZE}s', data_send)
                 message_send = message_send.rstrip(b'\x00').decode('utf-8')
+
                 conn.sendall(data_send)
 
                 if code_send == CBAC_CHECK_SUCCESS:
-                    time_left = (datetime.fromisoformat(message_send) - datetime.now(timezone.utc))
+                    time_left = (self.parse_timestamp(message_send) - datetime.now(timezone.utc))
                     conn_thread = threading.Thread(target=self.handle_session, args=(message_recv, time_left, ))
                     conn_thread.start()
-
-                print("Data Sent")
-                print(f"Code: {code_send}")
-                print(f"Message: {message_send}")
-
-            # time.sleep(5)
 
 
 if __name__ == "__main__":
