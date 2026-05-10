@@ -2,8 +2,11 @@
 # cbacd.py
 # Daemon for CBAC
 
-# TODO: Definir configuración de .env e implementarla
 # TODO: Función que arregla formato del calendario, log de quien crea eventos sin formato
+# TODO: Handler de sesiones nuevo
+# TODO: Revisar función de formato, dos casos, ALLOW_INTERSECT por separado? 
+#       PRIMERO ELIMINA POR TIEMPO Y DESPUES INTERVALO DE MIN MINUTOS PARA INTERSECT 
+# TODO: Extender sesión
 
 
 #!.venv/bin/python3.12
@@ -16,6 +19,8 @@ import signal
 import sys
 import configparser
 import threading
+import pwd
+import grp
 from datetime import datetime, timezone, timedelta
 from dateutil import parser
 from zoneinfo import ZoneInfo
@@ -38,19 +43,21 @@ CBAC_CHECK_SUCCESS  = 1  # User exists and has a reservation                    
 CBAC_USER_CREATED   = 2  # User has been created correctly                            Message set to user's email address
 CBAC_USER_DELETED   = 3  # User has been deleted correctly                            Message set to user's email address
 CBAC_RESERV_CREATED = 4  # Reservation has been created for user                      Message empty
-CBAC_WRONG_USER     = 5  # No reservation, occupied space                             Message empty
-CBAC_EMPTY_SPACE    = 6  # No reservation but empty space                             Message empty
-CBAC_API_ERROR      = 7  # Daemon couldn't process request with Google API            Message set to origin of the error
-CBAC_PARAM_ERROR    = 8  # Params given to daemon not valid                           Message set to origin of the error
-CBAC_OCCUPIED       = 9  # Time supplied overlaps with event in the calendar          Message informative
+CBAC_RESERV_DELETED = 5  # Reservation has been deleted                               Message empty
+CBAC_WRONG_USER     = 6  # No reservation, occupied space                             Message empty
+CBAC_EMPTY_SPACE    = 7  # No reservation but empty space                             Message empty
+CBAC_API_ERROR      = 8  # Daemon couldn't process request with Google API            Message set to origin of the error
+CBAC_PARAM_ERROR    = 9  # Params given to daemon not valid                           Message set to origin of the error
+CBAC_OCCUPIED       = 10 # Time supplied overlaps with event in the calendar          Message informative
 
 # Packet request codes
-CBAC_CHECK_RESERV   = 10 # Asks daemon to check if user can go through.               Message set to username to check
-CBAC_MAKE_RESERV    = 11 # Asks daemon to make a reservation from now                 Message set to user, when, time interval, separated by spaces
-CBAC_DEL_RESERV     = 12 # Asks daemon to delete a certain event                      Message set to timestamp intersecting with the event
-CBAC_ADD_USER       = 13 # Asks daemon to add user to the calendar of the system.     Message set to user's email address and role, separated by space
-CBAC_DEL_USER       = 14 # Asks daemon to delete user from the calendar               Message set to user's email address
-CBAC_UPDATE_CONF    = 15 # Asks daemon to update env variables                        Message empty
+CBAC_CHECK_RESERV   = 11 # Asks daemon to check if user can go through.               Message set to username to check
+CBAC_MAKE_RESERV    = 12 # Asks daemon to make a reservation from now                 Message set to user, when, time interval, separated by spaces
+CBAC_DEL_RESERV     = 13 # Asks daemon to delete a certain event                      Message set to timestamp intersecting with the event
+CBAC_ADD_USER       = 14 # Asks daemon to add user to the calendar of the system.     Message set to user's email address and role, separated by space
+CBAC_DEL_USER       = 15 # Asks daemon to delete user from the calendar               Message set to user's email address
+CBAC_UPDATE_CONF    = 16 # Asks daemon to update env variables                        Message empty
+CBAC_EXTEND_RESERV  = 17 # Asks daemon to extend the current reservation              Message set to user and minutes to extend
 
 
 SCOPES=["https://www.googleapis.com/auth/calendar"]
@@ -72,6 +79,7 @@ class CBAC():
             os.remove(SOCKET_PATH)
         self.server = socket.socket(socket.AF_UNIX, socket.SOCK_SEQPACKET)
         self.server.bind(SOCKET_PATH)
+        os.chmod(SOCKET_PATH, 0o777)
         self.server.listen(1)
 
         # init google API
@@ -165,26 +173,17 @@ class CBAC():
 
 
     # Function to delete the events on the calendar with a given time, logs the event and user of the deleted events
-    def fix_events(self, when_dt: datetime):
+    def fix_events_by_time(self, when_dt: datetime):
         calendar_id = self.get_or_create_calendar()
-        event_list = self.get_events(when_dt, offset=0)
+        event_list = self.get_events(when_dt, offset=120)
 
-        valid_event_set = set()
         unformatted_event_set = set()
-
-        first_event_id = None
-        first_event_dt = None
 
         for event in event_list:
             start_dt = self.parse_timestamp(event["startime"].get("dateTime"))
             end_dt = self.parse_timestamp(event["end".get("dateTime")])
 
-            if (end_dt - start_dt) < timedelta(minutes=int(os.getenv("MAX_RESERV_MINUTES"))) and (end_dt - start_dt) < timedelta(minutes=int(os.getenv("MIN_RESERV_MINUTES"))):
-                valid_event_set.add(event["id"])
-                if first_event_dt is None or self.parse_timestamp(["created"]) < first_event_dt:
-                    first_event_dt = self.parse_timestamp(event["created"])
-                    first_event_id = event["id"] 
-            else:
+            if (end_dt - start_dt) > timedelta(minutes=int(os.getenv("MAX_RESERV_MINUTES"))) or (end_dt - start_dt) < timedelta(minutes=int(os.getenv("MIN_RESERV_MINUTES"))):
                 unformatted_event_set.add(event["id"])
 
         for event in unformatted_event_set:
@@ -193,14 +192,30 @@ class CBAC():
                 eventId = event["id"]
             ).execute()
 
-        if (os.getenv("ALLOW_INTERSECT") == "False"):
-            for event in valid_event_set:
-                if event["id"] != first_event_id:
-                    self.service.events().delete(
-                        calendarId = calendar_id,
-                        eventId = event["id"]
-                    ).execute()
 
+
+    # Function to delete the events that intersect with another that was created earlier
+    def fix_events_by_intersect(self, when_dt: datetime):
+        calendar_id = self.get_or_create_calendar()
+        event_list = self.get_events(when_dt, offset=0)
+
+        first_event_id = None
+        first_event_dt = None
+
+        for event in event_list:
+            curr_event_dt = self.parse_timestamp(event["created"])
+            if (first_event_id is None or curr_event_dt < first_event_id):
+                first_event_id = event["id"]
+                first_event_dt = self.parse_timestamp(event["created"])
+
+        for event in event_list:
+            if (event["id"] != first_event_id):
+                self.service.events().delete(
+                    calendarId = calendar_id,
+                    eventId = event["id"]
+                ).execute()
+
+            
 
     # Creates and returns the packet with a given code and message
     def create_packet(self, code: int, message: str) -> struct:
@@ -237,12 +252,16 @@ class CBAC():
                     "timeZone": os.getenv("TIMEZONE"),
                 }
             }
-            insert = self.service.events().insert(
-                calendarId = calendar_id,
-                body=event
-            ).execute()
 
-            return self.create_packet(CBAC_RESERV_CREATED, "")
+            try:
+                insert = self.service.events().insert(
+                    calendarId = calendar_id,
+                    body=event
+                ).execute()
+
+                return self.create_packet(CBAC_RESERV_CREATED, "")
+            except Exception as e:
+                return self.create_packet(CBAC_API_ERROR, "Couldn't make reservation")
         else:
             return self.create_packet(CBAC_OCCUPIED, "Time occupied on calendar")
 
@@ -257,11 +276,16 @@ class CBAC():
         if not events:
             return self.create_packet(CBAC_PARAM_ERROR, "No event in timestamp given")
         
-        for event in events:
-            self.service.events().delete(
-                calendarId=calendar_id,
-                eventId = event["id"]
-            ).execute()
+        try:
+            for event in events:
+                self.service.events().delete(
+                    calendarId=calendar_id,
+                    eventId = event["id"]
+                ).execute()
+
+            return self.create_packet(CBAC_RESERV_DELETED, "")
+        except Exception as e:
+            return self.create_packet(CBAC_API_ERROR, "Couldn't delete reservation") 
 
 
 
@@ -283,12 +307,15 @@ class CBAC():
             "role":role
         }
 
-        created_rule = self.service.acl().insert(calendarId=calendar_id, body=rule).execute()
+        try:
+            created_rule = self.service.acl().insert(calendarId=calendar_id, body=rule).execute()
+            return self.create_packet(CBAC_USER_CREATED, user_email)
+        except Exception as e:
+            return self.create_packet(CBAC_API_ERROR, "Couldn't add user to calendar")
+        
 
-        return self.create_packet(CBAC_USER_CREATED, user_email)
 
-    
-
+    # Function to delete user from calendar
     def del_user_from_calendar(self, user_email: str) -> struct:
         calendar_id = self.get_or_create_calendar()
 
@@ -330,6 +357,11 @@ class CBAC():
     
 
 
+    def extend_reserv(self, time):
+        pass
+
+
+
     # Updates env variables when asked by client
     def update_conf(self) -> struct:
         load_dotenv("/etc/cbac/config", override=True)
@@ -361,6 +393,9 @@ class CBAC():
             data_send = self.del_reserv(when)
         elif code_recv == CBAC_UPDATE_CONF:
             data_send = self.update_conf()
+        elif code_recv == CBAC_EXTEND_RESERV:
+            time = int(message_recv)
+            data_send = self.extend_reserv(time)
 
         return data_send
 
@@ -376,11 +411,11 @@ class CBAC():
     # or an error, used for direct communication with client without requiring an initial connection from the client
     def message_sessions(self,user: str, message: str, type=None):
         if type == i:
-            message = "[*] - " + message
+            message = f"[*] - USER: {user}  - " + message
         elif type == k:
-            message = "[+] - " + message
+            message = f"[+] - USER: {user}  - " + message
         elif type == e:
-            message = "[-] - " + message
+            message = f"[-] - USER: {user}  - " + message
         
         try:
             subprocess.run(["sudo", "wall", message])
@@ -394,43 +429,65 @@ class CBAC():
         secs = int(os.getenv("EVENT_FIX_MINUTES")) * 60
         now_dt = datetime.now() 
         while(True):
+            self.fix_events_by_time(now_dt)
             for i in range(10):
-                self.fix_events(now_dt + timedelta(minutes=(i * 5)))
+                self.fix_events_by_intersect(now_dt + timedelta(minutes=(i * int(os.getenv("MIN_RESERV_MINUTES")))))
             time.sleep(secs)
 
 
 
     # Thread for the current ssh session, informative messages and eventually termination of the process
     def handle_session(self, user: str, time_left: timedelta):
-        print("Waiting time left of reservation...")
-        seconds_left = time_left.total_seconds()
 
-        if seconds_left > 300:
-            seconds_left -= 300
-            time.sleep(seconds_left)
-            self.message_sessions(user, "5 minutes left in session", i)
-            time.sleep(300)
-        else:
-            self.message_sessions(user, f"{int(seconds_left)} seconds left in session", i)
-            time.sleep(time_left.total_seconds())
-        
-        list_sessions = subprocess.check_output(["sudo", "loginctl", "list-sessions"]).decode()
-        sessions = []
+        while True:
+            command_output = subprocess.check_output(["sudo", "loginclt", "list-sessions"]).decode()
+            session_list = []
+            user_list = []
 
-        for line in list_sessions.splitlines()[1:]:
-            info = line.split()
-            if len(info) >= 3 and info[2] == user:
-                sessions.append(info[0])
+            for line in command_output.splitlines()[1:]:
+                info = line.split()
+                if len(info) >= 3:
+                    session_list.append(info[0])
+                    user_list.append(info[2])
 
-        for session in sessions:
-            self.message_sessions(user, "Session terminated...", i)
-            subprocess.run(["sudo", "loginctl", "kill-session", session])
+            now_dt = datetime.now()
+            events = self.get_events(now_dt, 0)
+
+            
+            for i in range(len(session_list)):
+
+                user_info = pwd.getpwnam(user)
+                primary_gid = user_info.pw_gid
+
+                if not any(
+                            g.gr_name == os.getenv("FULL_ACCESS_GROUP") and (user in g.gr_mem or g.gr_gid == primary_gid)
+                            for g in grp.getgrall()
+                    ):
+                    user_permission = False
+                    users_event = None
+                    for event in events:
+                        if user_list[i] == event["summary"]:
+                            users_event = event
+                            user_permission = True
+                    if not user_permission:
+                        self.message_sessions(user_list[i], "Reservation ended, terminating session in 10 seconds...", i)
+                        time.sleep(10)
+                        subprocess.run(["sudo", "loginctl", "kill-session", session_list[i]])
+                    else:
+                        remaining = (self.parse_timestamp(event["end"].get("dateTime")) - now_dt).total_seconds() // 60
+                        if remaining < 5:
+                            self.message_sessions(user, f"{remaining} minutes left of reservation", i)
+            
+            time.sleep(60)
 
 
     # Main loop
 
     def run(self):
         data_recv = None
+
+        session_manager_thread = threading.Thread(target=self.handle_session)
+        session_manager_thread.start()
 
         event_fix_thread = threading.Thread(target=self.fix_event_loop)
         event_fix_thread.start()
@@ -452,11 +509,6 @@ class CBAC():
                 message_send = message_send.rstrip(b'\x00').decode('utf-8')
 
                 conn.sendall(data_send)
-
-                if code_send == CBAC_CHECK_SUCCESS:
-                    time_left = (self.parse_timestamp(message_send) - datetime.now(timezone.utc))
-                    conn_thread = threading.Thread(target=self.handle_session, args=(message_recv, time_left, ))
-                    conn_thread.start()
 
 
 if __name__ == "__main__":

@@ -18,16 +18,13 @@
 
 
 void print_help() {
-
+    
 }
 
 
 
 int main(int argc, char *argv[]) {
 
-    int sock;
-    struct sockaddr_un addr;
-    struct cbac_packet_t data_send;
     struct cbac_packet_t data_recv;
 
     int code;
@@ -47,20 +44,46 @@ int main(int argc, char *argv[]) {
     else if (argc == 3) {
 
         if (strcmp(argv[1], "adduser")) {
-            code = CBAC_ADD_USER;
+            if (getuid() != 0) {
+                CBAC_WARN("Error: Permission denied\n");
+                return 0;
+            }
 
+            code = CBAC_ADD_USER;
+            cbac_send_and_recv(code, argv[2], &data_recv);
+
+            if (data_recv.code == CBAC_USER_CREATED) {
+                CBAC_OKAY("User created in calendar with address: %s", data_recv.message);
+            }
+            else {
+                CBAC_WARN("ERROR: %s", data_recv.message);
+            }
+            
         }
         else if (strcmp(argv[1], "deluser")) {
+            if (getuid() != 0) {
+                CBAC_WARN("Error: Permission denied\n");
+                return 0;
+            }
+
             code = CBAC_DEL_USER;
+            cbac_send_and_recv(code, argv[2], &data_recv);
 
-        }
-        else if (strcmp(argv[1], "addreserv")) {
-            code = CBAC_MAKE_RESERV;
-
+            if (data_recv.code == CBAC_USER_DELETED) {
+                CBAC_OKAY("User deleted in calendar with address: %s", data_recv.message);
+            }
+            else {
+                CBAC_WARN("ERROR: %s", data_recv.message);
+            }
+        
         }
         else if (strcmp(argv[1], "delreserv")) {
-            code = CBAC_DEL_RESERV;
-
+        
+        
+        }
+        else if (strcmp(argv[1], "extend")) {
+        
+        
         }
 
     }
@@ -69,6 +92,19 @@ int main(int argc, char *argv[]) {
         if (strcmp(argv[1], "config")) {
             code = CBAC_UPDATE_CONF;
             
+            if (getuid() != 0) {
+                CBAC_WARN("Error: Permission denied\n");
+                return 0;
+            }
+
+        
+        
+        }
+        else if (strcmp(argv[1], "addreserv")) {
+            code = CBAC_MAKE_RESERV;
+            
+            
+
         }
 
     }
@@ -78,31 +114,6 @@ int main(int argc, char *argv[]) {
         return 0;
 
     }
-
-
-    message = buffer;
-    cbac_create_packet(&data_send, code, message);
-
-    sock = socket(AF_UNIX, SOCK_SEQPACKET, 0);
-    if (sock < 0) {
-        return -1;
-    }
-
-    if (cbac_connect(sock, &addr) < 0) {
-        close(sock);
-        return -1;
-    }
-
-    if (cbac_send_packet(sock, &data_send) < 0) {
-        close(sock);
-        return -1;
-    }
-
-    if (cbac_recv_packet(sock, &data_recv) < 0) {
-        close(sock);
-        return -1;
-    }
-
 
     return 0;
 }

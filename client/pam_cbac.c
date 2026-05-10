@@ -48,7 +48,7 @@ pam_sm_acct_mgmt(pam_handle_t *pamh, int flags,
     int ngroups = 0;
     pam_get_item(pamh, PAM_USER, (const void **)&user);
 
-    const char *group_excep = "tecnicos";
+    const char *group_excep = argv[0];
 
     struct group *gr = getgrnam(group_excep);
     struct passwd *pw = getpwnam(user);
@@ -72,33 +72,10 @@ pam_sm_acct_mgmt(pam_handle_t *pamh, int flags,
     }
 
 
-    // Conexión a socket, request y respuesta
-
-    int sock;
-    CBAC_SOCKADDR addr;
-    struct cbac_packet_t data_send;
     struct cbac_packet_t data_recv;
     int recv_code;
 
-    cbac_create_packet(&data_send, CBAC_CHECK_RESERV, user);
-
-    sock = cbac_socket();
-    if (sock < 0) {
-        return PAM_SYSTEM_ERR;
-    }
-
-    if (cbac_connect(sock, &addr) < 0) {
-        close(sock);
-        return PAM_SYSTEM_ERR;
-    }
-
-    if (cbac_send_packet(sock, &data_send) < 0) {
-        close(sock);
-        return PAM_SYSTEM_ERR;
-    }
-
-    if (cbac_recv_packet(sock, &data_recv) < 0) {
-        close(sock);
+    if (cbac_send_and_recv(CBAC_CHECK_RESERV, user, &data_recv) < 0) {
         return PAM_SYSTEM_ERR;
     }
 
@@ -146,33 +123,22 @@ pam_sm_acct_mgmt(pam_handle_t *pamh, int flags,
             strftime(now_dt, sizeof(now_dt), "%Y-%m-%dT%H:%M:%S%z", tm_info);
             snprintf(msg, 128, "%s %s %d", user, now_dt, minutes);
 
-            cbac_create_packet(&data_send, CBAC_MAKE_RESERV, msg);
-
-            if (cbac_send_packet(sock, &data_send) < 0) {
-                close(sock);
+            if (cbac_send_and_recv(CBAC_MAKE_RESERV, msg, &data_recv) < 0){
                 return PAM_SYSTEM_ERR;
             }
 
-            if (cbac_recv_packet(sock, &data_recv) < 0) {
-                close(sock);
-                return PAM_SYSTEM_ERR;
-            }
-
-            data_recv.code = ntohl(data_recv.code);
+            data_recv.code = cbac_get_packet_code(&data_recv);
         
             if (data_recv.code == CBAC_RESERV_CREATED) {
-                close(sock);
                 CBAC_PAM_OKAY(pamh, "Reservation created for user %s for %d minutes", user, minutes);
                 return PAM_SUCCESS;
             }
             else {
-                close(sock);
                 CBAC_PAM_WARN(pamh, "Error, daemon returned: %s", data_recv.message);
                 return PAM_AUTH_ERR;
             }   
         }
         else {
-            close(sock);
             CBAC_PAM_INFO(pamh, "No reservation created, exiting...");
             return PAM_AUTH_ERR;
         }
@@ -191,8 +157,6 @@ pam_sm_acct_mgmt(pam_handle_t *pamh, int flags,
         break;
 
     }
-
-    close(sock);
 
     return PAM_AUTH_ERR;
 }

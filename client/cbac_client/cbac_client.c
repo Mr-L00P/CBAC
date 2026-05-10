@@ -47,6 +47,7 @@ int cbac_create_packet(struct cbac_packet_t *packet, int code, const char *messa
 }
 
 int cbac_send_packet(int sockfd, const struct cbac_packet_t *packet) {
+
     if (send(sockfd, packet, sizeof(struct cbac_packet_t), 0) < 0) {
         return -1;
     }
@@ -61,9 +62,37 @@ int cbac_recv_packet(int sockfd, struct cbac_packet_t *packet) {
 }
 
 int cbac_get_packet_code(struct cbac_packet_t *packet) {
-    return ntohl(packet->code);
+    return packet->code;
 }
 
 char *cbac_get_packet_message(struct cbac_packet_t *packet) {
     return packet->message;
+}
+
+int cbac_send_and_recv(int code, const char* message, struct cbac_packet_t *recv_packet) {
+    int sockfd = cbac_socket();
+    struct cbac_packet_t send_packet;
+    CBAC_SOCKADDR addr;
+
+    cbac_create_packet(&send_packet, code, message);
+
+    if (cbac_connect(sockfd, &addr) < 0) {
+        close(sockfd);
+        return -1;
+    }
+
+    if (cbac_send_packet(sockfd, &send_packet) < 0) {
+        close(sockfd);
+        return -1;
+    }
+
+    if (cbac_recv_packet(sockfd, recv_packet) < 0) {
+        close(sockfd);
+        return -1;
+    }
+
+    recv_packet->code = ntohl(recv_packet->code);
+
+    return 0;
+
 }
