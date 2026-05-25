@@ -357,9 +357,37 @@ class CBAC():
     
 
 
-    def extend_reserv(self, time):
-        pass
+    def extend_reserv(self, user: str, minutes: str):
+        if int(minutes) > int(os.getenv("MAX_RESERV_MINUTES")) or int(minutes) < int(os.getenv("MIN_RESERV_MINUTES")):
+            return self.create_packet(CBAC_PARAM_ERROR, "Requested more than the max time")
 
+        calendar_id = self.get_or_create_calendar()
+
+        now_dt = datetime.now()
+        now = datetime.isoformat(now_dt)
+        end_dt = now_dt + timedelta(minutes=int(minutes))
+        end = datetime.isoformat(end_dt)
+
+        curr_events = self.get_events(now_dt, 0)
+        found = False
+
+        for event in curr_events:
+            if event["summary"] == user:
+                event["start"]["datetime"] = now
+                event["end"]["datetime"] = end
+
+                self.service.events().update(
+                    calendarId=calendar_id,
+                    eventId=event["id"],
+                    body=event
+                ).execute()
+
+                found = True
+
+        if found:
+            return self.create_packet(CBAC_OK, "")
+        else:
+            return self.create_packet(CBAC_API_ERROR, "No event for user found")
 
 
     # Updates env variables when asked by client
@@ -394,8 +422,8 @@ class CBAC():
         elif code_recv == CBAC_UPDATE_CONF:
             data_send = self.update_conf()
         elif code_recv == CBAC_EXTEND_RESERV:
-            time = int(message_recv)
-            data_send = self.extend_reserv(time)
+            user, time = message_recv.split()
+            data_send = self.extend_reserv(user, time)
 
         return data_send
 

@@ -11,6 +11,7 @@
 #include <unistd.h>
 #include <stdarg.h>
 #include <string.h>
+#include <pwd.h>
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <sys/un.h>
@@ -82,7 +83,28 @@ int main(int argc, char *argv[]) {
         
         }
         else if (strcmp(argv[1], "extend")) {
-        
+            code = CBAC_EXTEND_RESERV;
+
+            uid_t uid = getuid();
+            struct passwd *pw = getpwuid(uid);
+            char msg[CBAC_MSG_SIZE];
+
+            if (pw != NULL) {
+                snprintf(msg, sizeof(msg), "%s %s", pw->pw_name, argv[2]);
+            }
+            else {
+                CBAC_WARN("Error: Wasn't able to extract username");
+                return 0;
+            }
+
+            cbac_send_and_recv(code, msg, &data_recv);
+
+            if (data_recv.code == CBAC_OK) {
+                CBAC_OKAY("Reserv extended");
+            }
+            else {
+                CBAC_WARN("Error: %s", data_recv.message);
+            }
         
         }
 

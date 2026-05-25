@@ -48,7 +48,14 @@ pam_sm_acct_mgmt(pam_handle_t *pamh, int flags,
     int ngroups = 0;
     pam_get_item(pamh, PAM_USER, (const void **)&user);
 
-    const char *group_excep = argv[0];
+    const char *group_excep;
+
+    if (argc > 0) {
+        group_excep = argv[0];
+    }
+    else {
+        group_excep = "admin";
+    }
 
     struct group *gr = getgrnam(group_excep);
     struct passwd *pw = getpwnam(user);
