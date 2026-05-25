@@ -49,13 +49,16 @@ int main(int argc, char *argv[]) {
             print_help();
             return 0;
         }
+        else {
+            print_help();
+        }
 
     }
     else if (argc == 3) {
 
         if (strcmp(argv[1], "adduser")) {
             if (getuid() != 0) {
-                CBAC_WARN("Error: Permission denied\n");
+                CBAC_WARN("Error: Permission denied");
                 return 0;
             }
 
@@ -72,7 +75,7 @@ int main(int argc, char *argv[]) {
         }
         else if (strcmp(argv[1], "deluser")) {
             if (getuid() != 0) {
-                CBAC_WARN("Error: Permission denied\n");
+                CBAC_WARN("Error: Permission denied");
                 return 0;
             }
 
@@ -88,7 +91,16 @@ int main(int argc, char *argv[]) {
         
         }
         else if (strcmp(argv[1], "delreserv")) {
-        
+            code = CBAC_DEL_RESERV;
+            cbac_send_and_recv(code, argv[2], &data_recv);
+
+            if (data_recv.code == CBAC_RESERV_DELETED) {
+                CBAC_OKAY("Reservation deleted.");
+            }
+            else {
+                CBAC_WARN("Error: %s", data_recv.message);
+            }
+            return 0;
         
         }
         else if (strcmp(argv[1], "extend")) {
@@ -116,6 +128,9 @@ int main(int argc, char *argv[]) {
             }
         
         }
+        else {
+            print_help();
+        }
 
     }
     else if (argc == 4) {
@@ -124,18 +139,40 @@ int main(int argc, char *argv[]) {
             code = CBAC_UPDATE_CONF;
             
             if (getuid() != 0) {
-                CBAC_WARN("Error: Permission denied\n");
+                CBAC_WARN("Error: Permission denied");
                 return 0;
             }
 
         
         
         }
-        else if (strcmp(argv[1], "addreserv")) {
-            code = CBAC_MAKE_RESERV;
-            
-            
+        else {
+            print_help();
+        }
 
+    }
+    else if (argc == 5) { 
+        
+        if (strcmp(argv[1], "addreserv")) {
+            code = CBAC_MAKE_RESERV;
+            char msg[CBAC_MSG_SIZE];
+
+            snprintf(msg, sizeof(msg), "%s %s %s", argv[2], argv[3], argv[4]);
+
+            cbac_send_and_recv(code, msg, &data_recv);
+
+            if (data_recv.code == CBAC_RESERV_CREATED) {
+                CBAC_OKAY("Reservation created successfully");
+            }
+            else {
+                CBAC_WARN("Error: %s", data_recv.message);
+            }
+
+            return 0;
+
+        }
+        else {
+            print_help();
         }
 
     }
