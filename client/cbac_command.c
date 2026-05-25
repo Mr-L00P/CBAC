@@ -19,7 +19,16 @@
 
 
 void print_help() {
-    
+    printf("Console tool for different options for the CBAC service.\n\n");
+    printf("Usage: cbac <command> <arguments>\n\n");
+    printf("Commands:\n");
+    printf("\thelp     \t\tPrint help message\n");
+    printf("\tadduser  \t\tAdds user email to the shared calendar, argument must be the email address of the user. Requires root.\n");
+    printf("\tdeluser  \t\tRemoves user email from the shared calendar, argument must be the email address of the user. Requires root.\n");
+    printf("\taddreserv\t\tAdds a reservation to the calendar, arguments must be set to \n");
+    printf("\tdelreserv\t\tDeletes a reservation in the calendar, argument must be set to timestamp interesecting with the reservation\n");
+    printf("\textend   \t\tExtends the current reservation being used, argument must be set to the number of minutes to extend\n");
+    printf("\tconfig   \t\tChanges configuration file of the daemon, arguments must be set to the field to change and the new value separated by a space. Requires root.\n\n");
 }
 
 
